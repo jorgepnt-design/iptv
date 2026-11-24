@@ -512,8 +512,10 @@ class PlayerActivity : Activity() {
         override fun run() = try { tick() } catch (e: Throwable) { recError("Anzeige", e) }
         private fun tick() {
             if (!Recorder.active) { findViewById<View>(R.id.recIndicator).visibility = View.GONE; return }
-            findViewById<TextView>(R.id.recIndicator).text = "● REC ${Recorder.elapsed()}  ·  ${mb(Recorder.bytes)}"
-            if (Recorder.freeBytes(this@PlayerActivity) < 300L * 1024 * 1024) {
+            val lost = if (Recorder.droppedBytes > 0) "  ·  ⚠ Speicher zu langsam" else ""
+            findViewById<TextView>(R.id.recIndicator).text = "● REC ${Recorder.elapsed()}  ·  ${mb(Recorder.bytes)}$lost"
+            // freier Platz wird im Hintergrund gemessen – hier kein Speicherzugriff (sonst friert die Bedienung ein)
+            if (Recorder.lastFree < 300L * 1024 * 1024) {
                 stopRecording(); toast("Speicher fast voll – Aufnahme beendet"); return
             }
             ui.postDelayed(this, 1000)
@@ -583,15 +585,20 @@ class PlayerActivity : Activity() {
     }
 
     private fun startRecordingNow() = try { startRecordingInner() } catch (e: Throwable) {
-        try { Recorder.stop() } catch (_: Throwable) { }
+        try { Recorder.stop(null) } catch (_: Throwable) { }
         findViewById<View>(R.id.recIndicator).visibility = View.GONE
         recError("Start", e)
     }
 
     private fun startRecordingInner() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
-        if (Recorder.freeBytes(this) < 1024L * 1024 * 1024) { toast("Zu wenig Speicher frei (unter 1 GB)"); return }
-        Recorder.start(this, c)
+        Recorder.start(this, c) { err ->
+            ui.removeCallbacks(recTicker)
+            findViewById<View>(R.id.recIndicator).visibility = View.GONE
+            AlertDialog.Builder(this).setTitle("Aufnahme nicht möglich")
+                .setMessage("Die Datei konnte nicht geschrieben werden:\n$err\n\nTipp: Menü → Aufnahme-Speicherort → „Interner Speicher“.")
+                .setPositiveButton("OK", null).show()
+        }
         applyRecQuality(true)
         startStream(c) // neu verbinden, damit ab jetzt mitgeschrieben wird
         findViewById<View>(R.id.recIndicator).visibility = View.VISIBLE
@@ -603,19 +610,30 @@ class PlayerActivity : Activity() {
 
     private fun stopRecordingInner() {
         val name = Recorder.channelName
-        val f = Recorder.stop()
+        val bytes = Recorder.bytes
         applyRecQuality(false)
         ui.removeCallbacks(recTicker)
         findViewById<View>(R.id.recIndicator).visibility = View.GONE
-        if (f != null) toast("Aufnahme gespeichert: $name (${mb(f.length())}) – Menü → Aufnahmen")
-        else toast("Aufnahme beendet – es kamen keine Daten an (${mb(Recorder.bytes)}), nichts gespeichert")
+        // Datei wird im Hintergrund fertig geschrieben – Meldung kommt danach
+        Recorder.stop { f ->
+            if (f != null) toast("Aufnahme gespeichert: $name (${mb(f.length())}) – Menü → Aufnahmen")
+            else toast("Aufnahme beendet – es kamen keine Daten an (${mb(bytes)}), nichts gespeichert")
+        }
     }
 
     private fun chooseRecordDir() {
-        val places = Recorder.places(this)
-        val cur = Recorder.dir(this).absolutePath
-        val labels = places.map { p ->
-            (if (p.dir.absolutePath == cur) "● " else "    ") + p.label + "   ·   frei: " + mb(Recorder.free(p.dir))
+        scope.launch {
+            val data = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val places = Recorder.places(this@PlayerActivity)
+                Triple(places, Recorder.dir(this@PlayerActivity).absolutePath, places.map { Recorder.free(it.dir) })
+            }
+            chooseRecordDirDialog(data.first, data.second, data.third)
+        }
+    }
+
+    private fun chooseRecordDirDialog(places: List<Recorder.Place>, cur: String, frees: List<Long>) {
+        val labels = places.mapIndexed { i, p ->
+            (if (p.dir.absolutePath == cur) "● " else "    ") + p.label + "   ·   frei: " + mb(frees[i])
         }
         AlertDialog.Builder(this)
             .setTitle("Aufnahmen speichern auf …")
@@ -636,11 +654,17 @@ class PlayerActivity : Activity() {
     }
 
     private fun showRecordings() {
-        val files = Recorder.list(this)
+        scope.launch {
+            val (files, free) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Recorder.list(this@PlayerActivity) to Recorder.freeBytes(this@PlayerActivity) }
+            showRecordingsList(files, free)
+        }
+    }
+
+    private fun showRecordingsList(files: List<java.io.File>, free: Long) {
         if (files.isEmpty()) { toast("Noch keine Aufnahmen"); return }
         val fmt = java.text.SimpleDateFormat("dd.MM. HH:mm", java.util.Locale.GERMANY)
         AlertDialog.Builder(this)
-            .setTitle("Aufnahmen (${files.size})  ·  frei am Speicherort: ${mb(Recorder.freeBytes(this))}")
+            .setTitle("Aufnahmen (${files.size})  ·  frei am Speicherort: ${mb(free)}")
             .setItems(files.map { "${it.nameWithoutExtension.substringBeforeLast('_').substringBeforeLast('_')}  ·  ${fmt.format(java.util.Date(it.lastModified()))}  ·  ${mb(it.length())}" }.toTypedArray()) { _, w ->
                 val f = files[w]
                 AlertDialog.Builder(this).setTitle(f.nameWithoutExtension)

@@ -1,6 +1,6 @@
 {
-  "versionCode": 36,
-  "versionName": "2.24",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=36",
-  "notes": "• Filme/Serien/Aufnahmen: schlanke Leiste unten statt Knöpfe in der Bildmitte\n• Aufnahme schreibt gepuffert (schont USB-Sticks)\n• Nach einem Absturz zeigt die App den Grund vom System an"
+  "versionCode": 37,
+  "versionName": "2.25",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=37",
+  "notes": "• Aufnahme: Absturz („App reagiert nicht“) behoben – alle Speicherzugriffe laufen jetzt im Hintergrund\n• Warnung, falls der Speicher (z. B. USB-Stick) zu langsam ist"
 }
