@@ -30,15 +30,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 object Players {
-    fun create(ctx: Context, ua: () -> String = { Http.UA }): ExoPlayer {
+    fun create(ctx: Context, recordable: Boolean = false, ua: () -> String = { Http.UA }): ExoPlayer {
         // Kennung wird bei jedem Stream neu gelesen (passend zur Playlist)
         val http = androidx.media3.datasource.DataSource.Factory {
-            DefaultHttpDataSource.Factory()
+            val src = DefaultHttpDataSource.Factory()
                 .setUserAgent(ua())
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(20000)
                 .createDataSource()
+            // bei laufender Aufnahme die empfangenen Daten zusätzlich in die Datei schreiben
+            if (recordable && Recorder.active) androidx.media3.datasource.TeeDataSource(src, Recorder.sink()) else src
         }
         val extractors = DefaultExtractorsFactory().setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS

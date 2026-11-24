@@ -136,6 +136,7 @@ class PlayerActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        if (Recorder.active) stopRecording()
         player.stop()
     }
 
@@ -209,7 +210,7 @@ class PlayerActivity : Activity() {
     // ---------- Player ----------
 
     private fun initPlayer() {
-        player = Players.create(this)
+        player = Players.create(this, recordable = true)
         playerView.player = player
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -240,6 +241,7 @@ class PlayerActivity : Activity() {
 
     private fun play(c: Channel, list: List<Channel>) {
         val pid = playlist?.id ?: return
+        if (Recorder.active && Recorder.channelUrl != c.url) stopRecording()
         if (current?.url != c.url) previous = current
         current = c
         zapList = list.ifEmpty { Repo.channels }
@@ -382,6 +384,7 @@ class PlayerActivity : Activity() {
 
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
+        if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
 
@@ -441,9 +444,14 @@ class PlayerActivity : Activity() {
                 if (fav) "★ Favoritenlisten bearbeiten …" else "★ Zu Favoriten hinzufügen …",
                 "In Multi-View öffnen",
                 "Abspielen",
-                "☑ Mehrere Sender markieren …"
+                "☑ Mehrere Sender markieren …",
+                if (Recorder.active && Recorder.channelUrl == c.url) "■ Aufnahme beenden" else "● Aufnehmen"
             )) { _, w ->
                 when (w) {
+                    4 -> if (Recorder.active && Recorder.channelUrl == c.url) stopRecording() else {
+                        if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
+                        hideOverlay(); startRecording()
+                    }
                     3 -> pickFavListThen { name -> markMany(name, c) }
                     0 -> chooseFavLists(c)
                     1 -> {
@@ -476,6 +484,60 @@ class PlayerActivity : Activity() {
                 store.activeId = p.id
                 hideOverlay()
                 load(false)
+            }.show()
+    }
+
+    // ---------- Aufnahme ----------
+
+    private val recTicker = object : Runnable {
+        override fun run() {
+            if (!Recorder.active) { findViewById<View>(R.id.recIndicator).visibility = View.GONE; return }
+            findViewById<TextView>(R.id.recIndicator).text = "● REC ${Recorder.elapsed()}  ·  ${mb(Recorder.bytes)}"
+            if (Recorder.freeBytes(this@PlayerActivity) < 300L * 1024 * 1024) {
+                stopRecording(); toast("Speicher fast voll – Aufnahme beendet"); return
+            }
+            ui.postDelayed(this, 1000)
+        }
+    }
+
+    private fun startRecording() {
+        val c = current ?: run { toast("Kein Sender läuft"); return }
+        if (Recorder.freeBytes(this) < 1024L * 1024 * 1024) { toast("Zu wenig Speicher frei (unter 1 GB)"); return }
+        Recorder.start(this, c)
+        startStream(c) // neu verbinden, damit ab jetzt mitgeschrieben wird
+        findViewById<View>(R.id.recIndicator).visibility = View.VISIBLE
+        ui.removeCallbacks(recTicker); ui.post(recTicker)
+        toast("● Aufnahme von „${c.name}“ läuft")
+    }
+
+    private fun stopRecording() {
+        val name = Recorder.channelName
+        val f = Recorder.stop()
+        ui.removeCallbacks(recTicker)
+        findViewById<View>(R.id.recIndicator).visibility = View.GONE
+        if (f != null) toast("Aufnahme gespeichert: $name (${mb(f.length())}) – Menü → Aufnahmen")
+        else toast("Aufnahme beendet (zu kurz, nicht gespeichert)")
+    }
+
+    private fun showRecordings() {
+        val files = Recorder.list(this)
+        if (files.isEmpty()) { toast("Noch keine Aufnahmen"); return }
+        val fmt = java.text.SimpleDateFormat("dd.MM. HH:mm", java.util.Locale.GERMANY)
+        AlertDialog.Builder(this)
+            .setTitle("Aufnahmen (${files.size})  ·  frei: ${mb(Recorder.freeBytes(this))}")
+            .setItems(files.map { "${it.nameWithoutExtension.substringBeforeLast('_').substringBeforeLast('_')}  ·  ${fmt.format(java.util.Date(it.lastModified()))}  ·  ${mb(it.length())}" }.toTypedArray()) { _, w ->
+                val f = files[w]
+                AlertDialog.Builder(this).setTitle(f.nameWithoutExtension)
+                    .setItems(arrayOf("▶ Abspielen", "✕ Löschen")) { _, a ->
+                        if (a == 0) {
+                            val u = android.net.Uri.fromFile(f).toString()
+                            hideOverlay()
+                            startActivity(Intent(this, VodPlayerActivity::class.java)
+                                .putExtra("url", u).putExtra("title", f.nameWithoutExtension).putExtra("pos", store.resumePos(u)))
+                        } else AlertDialog.Builder(this).setTitle("Aufnahme löschen?").setMessage(f.nameWithoutExtension)
+                            .setPositiveButton("Löschen") { _, _ -> f.delete(); toast("Gelöscht"); showRecordings() }
+                            .setNegativeButton("Abbrechen", null).show()
+                    }.show()
             }.show()
     }
 
@@ -909,6 +971,9 @@ class PlayerActivity : Activity() {
                 else toast("Gilt nur für Xtream-Codes-Playlists")
             }
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
+            item == "● Aufnahme starten" -> { hideOverlay(); startRecording() }
+            item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
+            item == "Aufnahmen" -> showRecordings()
             item == "Beenden" -> finish()
         }
     }
@@ -1082,6 +1147,7 @@ class PlayerActivity : Activity() {
                 previous?.let { playingGroup = G_ALL; play(it, zapList) }; return true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { player.playWhenReady = !player.playWhenReady; return true }
+            KeyEvent.KEYCODE_MEDIA_RECORD -> { if (Recorder.active) stopRecording() else startRecording(); return true }
             KeyEvent.KEYCODE_BACK -> {
                 if (banner.visibility == View.VISIBLE) { hideBanner(); return true }
                 val now = System.currentTimeMillis()
