@@ -71,6 +71,8 @@ class ChannelAdapter(
         }
     var playingUrl: String? = null
     var favorites: Set<String> = emptySet()
+    /** Sender, der gerade verschoben wird (Favoritenliste ordnen) */
+    var moving: String? = null
 
     override fun onCreateViewHolder(p: ViewGroup, t: Int) =
         VH(LayoutInflater.from(p.context).inflate(R.layout.item_channel, p, false))
@@ -80,7 +82,11 @@ class ChannelAdapter(
     override fun onBindViewHolder(h: VH, pos: Int) {
         val c = items[pos]
         h.number.text = c.number.toString()
-        h.name.text = if (favKey(c) in favorites) "★ ${c.name}" else c.name
+        h.name.text = when {
+            moving != null && favKey(c) == moving -> "⇅  ${c.name}"
+            favKey(c) in favorites -> "★ ${c.name}"
+            else -> c.name
+        }
         h.logo.load(c.logo) { crossfade(false); size(160, 100) }
         val now = System.currentTimeMillis()
         val (cur, _) = Repo.nowNext(c, now)

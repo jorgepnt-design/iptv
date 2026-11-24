@@ -148,7 +148,7 @@ class Store(ctx: Context) {
 
     // ---------- Favoritenlisten (über den Sendernamen – bleiben bei Neuladen/Formatwechsel erhalten) ----------
 
-    class FavList(val name: String, val keys: MutableSet<String>)
+    class FavList(val name: String, val keys: MutableSet<String>, var manual: Boolean = false)
 
     fun favLists(): MutableList<FavList> {
         val raw = sp.getString("favlists", null)
@@ -160,13 +160,13 @@ class Store(ctx: Context) {
         val a = JSONArray(raw)
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i); val k = o.getJSONArray("k")
-            FavList(o.getString("n"), (0 until k.length()).map { k.getString(it) }.toMutableSet())
+            FavList(o.getString("n"), (0 until k.length()).map { k.getString(it) }.toMutableSet(), o.optBoolean("m", false))
         }.toMutableList()
     }
 
     fun saveFavLists(l: List<FavList>) {
         val a = JSONArray()
-        l.forEach { f -> a.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList()))) }
+        l.forEach { f -> a.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList())).put("m", f.manual)) }
         sp.edit().putString("favlists", a.toString()).commit()
     }
 

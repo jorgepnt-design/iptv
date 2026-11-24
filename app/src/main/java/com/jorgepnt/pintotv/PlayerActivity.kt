@@ -371,6 +371,7 @@ class PlayerActivity : Activity() {
         val l = channelsOfRaw(g)
         return when {
             g == G_RECENT -> l
+            g in favGroups.keys && store.favLists().firstOrNull { it.name == favGroups[g] }?.manual == true -> l // eigene Reihenfolge
             store.sortByName -> l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') }
             else -> l.sortedBy { it.number } // nach Nummer (berücksichtigt eigene Nummern)
         }
@@ -394,7 +395,9 @@ class PlayerActivity : Activity() {
             in favGroups.keys -> {
                 val keys = store.favLists().firstOrNull { it.name == favGroups[g] }?.keys ?: emptySet<String>()
                 val byKey = Repo.channels.groupBy { favKey(it) }
-                keys.mapNotNull { byKey[it]?.firstOrNull() }.sortedBy { it.number }
+                val fl = store.favLists().firstOrNull { it.name == favGroups[g] }
+                val l = keys.mapNotNull { byKey[it]?.firstOrNull() }
+                if (fl?.manual == true) l else l.sortedBy { it.number }
             }
             G_RECENT -> { val m = Repo.channels.associateBy { it.url }; store.recents(playlist!!.id).mapNotNull { m[it] } }
             G_ALL -> visible
@@ -472,11 +475,13 @@ class PlayerActivity : Activity() {
                 "☑ Mehrere Sender markieren …",
                 if (Recorder.active && Recorder.channelUrl == c.url) "■ Aufnahme beenden" else "● Aufnehmen",
                 "# Sendernummer ändern (${c.number})",
-                *(if (viewingGroup == G_RECENT) arrayOf("✕ Aus Verlauf entfernen", "🗑 Ganzen Verlauf löschen") else emptyArray())
+                *(if (viewingGroup == G_RECENT) arrayOf("✕ Aus Verlauf entfernen", "🗑 Ganzen Verlauf löschen")
+                  else if (viewingGroup in favGroups.keys) arrayOf("⇅ Verschieben (Reihenfolge ändern)")
+                  else emptyArray())
             )) { _, w ->
                 when (w) {
                     5 -> changeNumber(c)
-                    6 -> { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
+                    6 -> if (viewingGroup in favGroups.keys) startMove(c) else { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
                     7 -> confirmClearRecents()
                     4 -> if (Recorder.active && Recorder.channelUrl == c.url) stopRecording() else {
                         if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
@@ -960,7 +965,7 @@ class PlayerActivity : Activity() {
                 val fl = lists[w]
                 AlertDialog.Builder(this)
                     .setTitle("★ ${fl.name}")
-                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren")) { _, a ->
+                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren", "⇅ Sender ordnen", "↺ Reihenfolge zurücksetzen (nach Nummer)")) { _, a ->
                         val all = store.favLists()
                         val i = all.indexOfFirst { it.name == fl.name }
                         if (i < 0) return@setItems
@@ -971,12 +976,21 @@ class PlayerActivity : Activity() {
                                     .setPositiveButton("Speichern") { _, _ ->
                                         val n = input.text.toString().trim()
                                         if (n.isNotEmpty() && all.none { it.name.equals(n, true) && it !== all[i] }) {
-                                            all[i] = Store.FavList(n, all[i].keys); store.saveFavLists(all); afterFavChange(null)
+                                            all[i] = Store.FavList(n, all[i].keys, all[i].manual); store.saveFavLists(all); afterFavChange(null)
                                         }
                                     }.setNegativeButton("Abbrechen", null).show()
                             }
                             1 -> if (i > 0) { all.add(i - 1, all.removeAt(i)); store.saveFavLists(all); afterFavChange(null) }
                             4 -> markMany(fl.name, null)
+                            5 -> {
+                                val g = "★ ${fl.name}"
+                                val first = channelsOf(g).firstOrNull() ?: run { toast("Die Liste ist leer"); return@setItems }
+                                if (overlay.visibility != View.VISIBLE) showOverlay()
+                                menuPane.visibility = View.GONE
+                                showGroup(g); focusChannel(0)
+                                ui.postDelayed({ startMove(channelAdapter.items.firstOrNull() ?: first) }, 300)
+                            }
+                            6 -> { all[i].manual = false; store.saveFavLists(all); afterFavChange(null); toast("Wieder nach Nummer sortiert") }
                             2 -> { all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert") }
                             3 -> {
                                 if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); return@setItems }
@@ -987,6 +1001,56 @@ class PlayerActivity : Activity() {
                         }
                     }.show()
             }.show()
+    }
+
+    // ---------- Favoriten ordnen ----------
+
+    private var moveKey: String? = null
+
+    private fun startMove(c: Channel) {
+        if (viewingGroup !in favGroups.keys) return
+        moveKey = favKey(c)
+        channelAdapter.moving = moveKey
+        // ab jetzt gilt die eigene Reihenfolge – Ausgangspunkt ist die aktuelle Anzeige
+        saveFavOrder(channelAdapter.items)
+        channelAdapter.items = channelAdapter.items
+        focusAt(channelList, channelAdapter.items.indexOfFirst { favKey(it) == moveKey })
+        toast("⇅ Mit ▲ ▼ verschieben, OK = fertig")
+    }
+
+    private fun moveBy(d: Int) {
+        val k = moveKey ?: return
+        val l = channelAdapter.items.toMutableList()
+        val i = l.indexOfFirst { favKey(it) == k }
+        if (i < 0) { stopMove(); return }
+        val ni = (i + d).coerceIn(0, l.size - 1)
+        if (ni == i) return
+        l.add(ni, l.removeAt(i))
+        channelAdapter.items = l
+        focusAt(channelList, ni)
+    }
+
+    private fun stopMove() {
+        if (moveKey == null) return
+        saveFavOrder(channelAdapter.items)
+        moveKey = null
+        channelAdapter.moving = null
+        val pos = channelList.focusedChild?.let { channelList.getChildAdapterPosition(it) } ?: 0
+        channelAdapter.items = channelAdapter.items
+        focusAt(channelList, pos)
+        toast("Reihenfolge gespeichert")
+    }
+
+    private fun saveFavOrder(shown: List<Channel>) {
+        val name = favGroups[viewingGroup] ?: return
+        val all = store.favLists()
+        val fl = all.firstOrNull { it.name == name } ?: return
+        val shownKeys = shown.map { favKey(it) }.filter { it in fl.keys }
+        // Einträge, die in dieser Playlist nicht vorkommen, bleiben hinten erhalten
+        val rest = fl.keys.filter { it !in shownKeys }
+        fl.keys.clear(); fl.keys.addAll(shownKeys + rest)
+        fl.manual = true
+        store.saveFavLists(all)
     }
 
     // ---------- Gruppen verwalten ----------
@@ -1224,6 +1288,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun hideOverlay() {
+        if (moveKey != null) stopMove()
         previewOff()
         overlay.visibility = View.GONE
         menuPane.visibility = View.GONE
@@ -1496,6 +1561,17 @@ class PlayerActivity : Activity() {
             return true
         }
         if (e.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e)
+        if (overlay.visibility == View.VISIBLE && moveKey != null) {
+            armOverlayTimer()
+            when (code) {
+                KeyEvent.KEYCODE_DPAD_UP -> moveBy(-1)
+                KeyEvent.KEYCODE_DPAD_DOWN -> moveBy(1)
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> moveBy(-8)
+                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> moveBy(8)
+                in centerKeys, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { if (code in centerKeys) swallowCenter = true; stopMove() }
+            }
+            return true
+        }
         if (overlay.visibility == View.VISIBLE) {
             armOverlayTimer()
             val rv = listContaining(currentFocus)

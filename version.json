@@ -1,6 +1,6 @@
 {
-  "versionCode": 48,
-  "versionName": "2.36",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=48",
-  "notes": "• Info-Leiste beim Umschalten deutlich kleiner und schmaler\n• Timeshift-Leiste ebenfalls kompakter"
+  "versionCode": 49,
+  "versionName": "2.37",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=49",
+  "notes": "• Favoriten selbst ordnen: OK lang auf einen Sender in der Favoritenliste → ⇅ Verschieben, mit ▲▼ bewegen, OK = fertig\n• Menü → Favoritenlisten → Liste → ⇅ Sender ordnen / ↺ Reihenfolge zurücksetzen"
 }
