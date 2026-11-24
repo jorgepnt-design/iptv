@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "2.11",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=23",
-  "notes": "• Filme & Serien: Playlist oben direkt auswählen\n• Menü öffnet sich zuverlässig"
+  "versionCode": 24,
+  "versionName": "2.12",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=24",
+  "notes": "• Mehrere Sender markieren und in eine Favoritenliste speichern (OK lang → „Mehrere Sender markieren“)\n• Markierung bleibt nach dem Speichern von Favoriten stehen\n• Filme & Serien: Playlist oben auswählbar"
 }

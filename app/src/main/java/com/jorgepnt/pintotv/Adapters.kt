@@ -24,7 +24,11 @@ class TextAdapter(
     }
 
     var items: List<TextItem> = emptyList()
-        set(v) { field = v; notifyDataSetChanged() }
+        set(v) {
+            val same = v.size == field.size && v.isNotEmpty()
+            field = v
+            if (same) notifyItemRangeChanged(0, v.size) else notifyDataSetChanged() // gleiche Länge: an Ort und Stelle, Fokus bleibt
+        }
 
     var activePos = -1
         set(v) { val old = field; field = v; if (old >= 0) notifyItemChanged(old); if (v >= 0) notifyItemChanged(v) }
@@ -60,7 +64,11 @@ class ChannelAdapter(
     }
 
     var items: List<Channel> = emptyList()
-        set(v) { field = v; notifyDataSetChanged() }
+        set(v) {
+            val same = v.size == field.size && v.isNotEmpty()
+            field = v
+            if (same) notifyItemRangeChanged(0, v.size) else notifyDataSetChanged()
+        }
     var playingUrl: String? = null
     var favorites: Set<String> = emptySet()
 

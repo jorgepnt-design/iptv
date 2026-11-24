@@ -440,9 +440,11 @@ class PlayerActivity : Activity() {
             .setItems(arrayOf(
                 if (fav) "★ Favoritenlisten bearbeiten …" else "★ Zu Favoriten hinzufügen …",
                 "In Multi-View öffnen",
-                "Abspielen"
+                "Abspielen",
+                "☑ Mehrere Sender markieren …"
             )) { _, w ->
                 when (w) {
+                    3 -> pickFavListThen { name -> markMany(name, c) }
                     0 -> chooseFavLists(c)
                     1 -> {
                         val tiles = MultiViewActivity.tiles
@@ -503,8 +505,56 @@ class PlayerActivity : Activity() {
         dlg.show()
     }
 
+    /** zuerst die Ziel-Favoritenliste wählen (oder neu anlegen) */
+    private fun pickFavListThen(then: (String) -> Unit) {
+        val lists = store.favLists()
+        AlertDialog.Builder(this)
+            .setTitle("In welche Favoritenliste?")
+            .setItems((lists.map { "★ ${it.name}  (${it.keys.size})" } + "+ Neue Liste anlegen").toTypedArray()) { _, w ->
+                if (w == lists.size) newFavList { then(it) } else then(lists[w].name)
+            }.show()
+    }
+
+    /** Mehrfachauswahl: Sender der aktuellen Gruppe in eine Favoritenliste übernehmen */
+    private fun markMany(listName: String, focus: Channel?) {
+        val chans = channelAdapter.items.distinctBy { favKey(it) }
+        if (chans.isEmpty()) return
+        val keys = store.favLists().firstOrNull { it.name == listName }?.keys ?: mutableSetOf()
+        val checked = BooleanArray(chans.size) { favKey(chans[it]) in keys || (focus != null && chans[it].url == focus.url) }
+        val labels = chans.map { "${it.number}  ${it.name}" }.toTypedArray()
+        Dialogs.multiChoice(this, "Sender für „★ $listName“ markieren", labels, checked) {
+            val lists = store.favLists()
+            val l = lists.firstOrNull { it.name == listName } ?: return@multiChoice
+            var added = 0; var removed = 0
+            chans.forEachIndexed { i, ch ->
+                val k = favKey(ch)
+                if (checked[i]) { if (l.keys.add(k)) added++ } else { if (l.keys.remove(k)) removed++ }
+            }
+            store.saveFavLists(lists)
+            toast("★ $listName: $added hinzugefügt" + if (removed > 0) ", $removed entfernt" else "")
+            afterFavChange(focus)
+        }
+    }
+
     private fun afterFavChange(c: Channel?) {
         channelAdapter.favorites = store.favorites()
+        // Normalfall: man steht in einer normalen Gruppe → nur Stern aktualisieren, Markierung bleibt stehen
+        if (viewingGroup !in favGroups.keys && store.favLists().all { "★ ${it.name}" in favGroups.keys } && favGroups.size == store.favLists().size) {
+            channelList.post {
+                try { channelAdapter.notifyItemRangeChanged(0, channelAdapter.itemCount) } catch (e: Exception) { }
+                groupAdapter.items = groupKeys.map { g ->
+                    if (g == G_MENU) TextItem(G_MENU, "›")
+                    else if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
+                    else if (g == G_MOVIES || g == G_SERIES) TextItem(g, "›")
+                    else TextItem(g, channelsOf(g).size.toString())
+                }
+                if (c != null && overlay.visibility == View.VISIBLE) {
+                    val i = channelAdapter.indexOf(c.url)
+                    channelList.findViewHolderForAdapterPosition(i)?.itemView?.requestFocus()
+                }
+            }
+            return
+        }
         val oldView = viewingGroup
         buildGroups()
         if (viewingGroup !in groupKeys || viewingGroup in specialGroups) viewingGroup = groupKeys.getOrElse(specialGroups.size) { G_ALL }
@@ -544,7 +594,7 @@ class PlayerActivity : Activity() {
                 val fl = lists[w]
                 AlertDialog.Builder(this)
                     .setTitle("★ ${fl.name}")
-                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen")) { _, a ->
+                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren")) { _, a ->
                         val all = store.favLists()
                         val i = all.indexOfFirst { it.name == fl.name }
                         if (i < 0) return@setItems
@@ -560,6 +610,7 @@ class PlayerActivity : Activity() {
                                     }.setNegativeButton("Abbrechen", null).show()
                             }
                             1 -> if (i > 0) { all.add(i - 1, all.removeAt(i)); store.saveFavLists(all); afterFavChange(null) }
+                            4 -> markMany(fl.name, null)
                             2 -> { all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert") }
                             3 -> {
                                 if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); return@setItems }
