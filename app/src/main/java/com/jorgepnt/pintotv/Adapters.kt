@@ -72,7 +72,7 @@ class ChannelAdapter(
     override fun onBindViewHolder(h: VH, pos: Int) {
         val c = items[pos]
         h.number.text = c.number.toString()
-        h.name.text = if (c.url in favorites) "★ ${c.name}" else c.name
+        h.name.text = if (favKey(c) in favorites) "★ ${c.name}" else c.name
         h.logo.load(c.logo) { crossfade(false); size(160, 100) }
         val now = System.currentTimeMillis()
         val (cur, _) = Repo.nowNext(c, now)

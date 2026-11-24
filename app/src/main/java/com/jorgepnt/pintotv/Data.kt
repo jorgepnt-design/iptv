@@ -46,6 +46,42 @@ data class Playlist(
     }
 }
 
+fun favKey(c: Channel) = c.name.trim().lowercase()
+
+/** Land aus Gruppennamen wie „DE | Sport“, „|PT| Desporto“, „[UK] News“, „FR: Cinéma“ */
+object Countries {
+    private val prefix = Regex("^[\\s|\\[(]*([A-Za-z]{2,3})\\s*[|:\\]\\)\\-–]")
+    private val names = mapOf(
+        "DE" to "Deutschland", "GER" to "Deutschland", "AT" to "Österreich", "CH" to "Schweiz", "PT" to "Portugal",
+        "BR" to "Brasilien", "ES" to "Spanien", "FR" to "Frankreich", "IT" to "Italien", "UK" to "Großbritannien",
+        "GB" to "Großbritannien", "US" to "USA", "USA" to "USA", "NL" to "Niederlande", "BE" to "Belgien",
+        "PL" to "Polen", "TR" to "Türkei", "GR" to "Griechenland", "RO" to "Rumänien", "AR" to "Arabisch",
+        "RU" to "Russland", "HR" to "Kroatien", "RS" to "Serbien", "AL" to "Albanien", "EX" to "Ex-Jugoslawien",
+        "IN" to "Indien", "PK" to "Pakistan", "SE" to "Schweden", "NO" to "Norwegen", "DK" to "Dänemark",
+        "FI" to "Finnland", "CZ" to "Tschechien", "HU" to "Ungarn", "BG" to "Bulgarien", "CA" to "Kanada",
+        "MX" to "Mexiko", "LAT" to "Lateinamerika", "AF" to "Afrika", "KU" to "Kurdisch", "IR" to "Iran",
+        "IL" to "Israel", "UA" to "Ukraine", "BA" to "Bosnien", "MK" to "Nordmazedonien", "SI" to "Slowenien"
+    )
+    private val words = listOf(
+        "deutsch" to "DE", "germany" to "DE", "german" to "DE", "portug" to "PT", "brasil" to "BR", "brazil" to "BR",
+        "españa" to "ES", "spain" to "ES", "france" to "FR", "italia" to "IT", "italy" to "IT", "turk" to "TR",
+        "türk" to "TR", "poland" to "PL", "polska" to "PL", "österreich" to "AT", "austria" to "AT", "schweiz" to "CH",
+        "swiss" to "CH", "england" to "UK", "united kingdom" to "UK", "arab" to "AR"
+    )
+
+    fun code(group: String): String {
+        prefix.find(group)?.let { return it.groupValues[1].uppercase() }
+        val g = group.lowercase()
+        words.firstOrNull { g.contains(it.first) }?.let { return it.second }
+        return "?"
+    }
+
+    fun label(code: String) = when (code) {
+        "?" -> "Sonstige / ohne Land"
+        else -> names[code]?.let { "$it ($code)" } ?: code
+    }
+}
+
 /** Einstellungen, Playlists, Favoriten, Verlauf */
 class Store(ctx: Context) {
     private val sp = ctx.getSharedPreferences("pintotv", Context.MODE_PRIVATE)
@@ -66,14 +102,30 @@ class Store(ctx: Context) {
 
     fun active(): Playlist? = playlists().let { l -> l.firstOrNull { it.id == activeId } ?: l.firstOrNull() }
 
-    fun favorites(pid: String): Set<String> = sp.getStringSet("fav_$pid", emptySet())!!.toSet()
+    /** Favoriten über den Sendernamen – bleiben erhalten, auch wenn sich Adresse, Format oder Playlist ändern */
+    fun favorites(): Set<String> = sp.getStringSet("favs", emptySet())!!.toSet()
 
-    fun toggleFavorite(pid: String, url: String): Boolean {
-        val s = favorites(pid).toMutableSet()
-        val added = if (url in s) { s.remove(url); false } else { s.add(url); true }
-        sp.edit().putStringSet("fav_$pid", s).apply()
+    fun isFavorite(c: Channel) = favKey(c) in favorites()
+
+    fun toggleFavorite(c: Channel): Boolean {
+        val s = favorites().toMutableSet()
+        val k = favKey(c)
+        val added = if (k in s) { s.remove(k); false } else { s.add(k); true }
+        sp.edit().putStringSet("favs", s).commit()
         return added
     }
+
+    /** alte Favoriten (gespeichert über die Stream-Adresse) übernehmen */
+    fun migrateFavorites(pid: String, channels: List<Channel>) {
+        val old = sp.getStringSet("fav_$pid", null) ?: return
+        val s = favorites().toMutableSet()
+        channels.filter { it.url in old }.forEach { s.add(favKey(it)) }
+        sp.edit().putStringSet("favs", s).remove("fav_$pid").commit()
+    }
+
+    /** ausgeblendete Gruppen je Playlist */
+    fun hiddenGroups(pid: String): Set<String> = sp.getStringSet("hidden_$pid", emptySet())!!.toSet()
+    fun setHiddenGroups(pid: String, groups: Set<String>) = sp.edit().putStringSet("hidden_$pid", groups).commit()
 
     fun recents(pid: String): List<String> {
         val a = JSONArray(sp.getString("recent_$pid", "[]"))
@@ -302,12 +354,22 @@ object Xtream {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun auth(p: Playlist) = "username=${enc(p.user)}&password=${enc(p.pass)}"
 
+    /** erlaubte gleichzeitige Verbindungen laut Anbieter (0 = unbekannt) */
+    @Volatile var maxConnections = 0
+
     fun epgUrl(p0: Playlist): String { val p = normalize(p0); return "${base(p.server)}/xmltv.php?${auth(p)}" }
 
     fun load(p0: Playlist, ext: String, progress: Progress? = null): List<Channel> {
         val p = normalize(p0)
         val b = base(p.server)
         progress?.invoke("Anmeldung beim Server …", -1)
+        try {
+            val info = JSONObject(Http.text("$b/player_api.php?${auth(p)}")).optJSONObject("user_info")
+            if (info != null) {
+                if (info.optString("auth") == "0") throw IOException("Anmeldung fehlgeschlagen – Benutzer oder Passwort falsch")
+                maxConnections = info.optString("max_connections").toIntOrNull() ?: 0
+            }
+        } catch (e: org.json.JSONException) { }
         val catsTxt = Http.text("$b/player_api.php?${auth(p)}&action=get_live_categories")
         val cats = try { JSONArray(catsTxt) } catch (e: Exception) {
             throw IOException("Anmeldung fehlgeschlagen – Server, Benutzer oder Passwort prüfen")
@@ -470,6 +532,7 @@ object Repo {
                 progress?.invoke("Gespeicherte Senderliste wird geladen …", -1)
                 val o = JSONObject(f.readText())
                 detectedEpg = o.optString("epg")
+                Xtream.maxConnections = o.optInt("maxc", 0)
                 val a = o.getJSONArray("ch")
                 list = (0 until a.length()).map {
                     val c = a.getJSONArray(it)
@@ -481,6 +544,7 @@ object Repo {
         val store = Store(ctx)
         Http.UA = store.userAgent(p.id) ?: Http.CANDIDATES[0]
         if (list == null) {
+            Xtream.maxConnections = 0
             val fixed = store.userAgentFixed(p.id)
             val tries = if (fixed) listOf(Http.UA) else (listOf(Http.UA) + Http.CANDIDATES).distinct()
             var lastError: Exception? = null
@@ -513,7 +577,7 @@ object Repo {
             progress?.invoke("${list.size} Sender werden gespeichert …", 100)
             val a = JSONArray()
             list.forEach { c -> a.put(JSONArray().put(c.name).put(c.url).put(c.logo ?: "").put(c.group).put(c.epgId ?: "").put(c.number)) }
-            f.writeText(JSONObject().put("epg", detectedEpg).put("ch", a).toString())
+            f.writeText(JSONObject().put("epg", detectedEpg).put("maxc", Xtream.maxConnections).put("ch", a).toString())
         }
         val g = LinkedHashMap<String, MutableList<Channel>>()
         list.forEach { g.getOrPut(it.group) { mutableListOf() }.add(it) }

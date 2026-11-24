@@ -225,7 +225,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun zap(step: Int) {
-        val list = zapList.ifEmpty { Repo.channels }
+        val list = zapList.ifEmpty { visible.ifEmpty { Repo.channels } }
         if (list.isEmpty()) return
         val i = list.indexOfFirst { it.url == current?.url }
         val n = if (i < 0) 0 else ((i + step) % list.size + list.size) % list.size
@@ -254,6 +254,7 @@ class PlayerActivity : Activity() {
             loading = false
             hideLoading()
             hideStatus()
+            store.migrateFavorites(p.id, Repo.channels)
             buildGroups()
             toast("${Repo.channels.size} Sender in ${Repo.groups.size} Gruppen geladen")
             val last = store.lastUrl(p.id)
@@ -303,16 +304,22 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private var hidden: Set<String> = emptySet()
+    private var visible: List<Channel> = emptyList()
+
     private fun buildGroups() {
-        groupKeys = listOf(G_FAV, G_RECENT, G_ALL) + Repo.groups
+        val pid = playlist?.id ?: return
+        hidden = store.hiddenGroups(pid)
+        visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
+        groupKeys = listOf(G_FAV, G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
-        val pid = playlist?.id ?: return emptyList()
+        playlist?.id ?: return emptyList()
         return when (g) {
-            G_FAV -> store.favorites(pid).let { f -> Repo.channels.filter { it.url in f } }
-            G_RECENT -> { val m = Repo.channels.associateBy { it.url }; store.recents(pid).mapNotNull { m[it] } }
-            G_ALL -> Repo.channels
+            G_FAV -> store.favorites().let { f -> Repo.channels.filter { favKey(it) in f }.distinctBy { favKey(it) } }
+            G_RECENT -> { val m = Repo.channels.associateBy { it.url }; store.recents(playlist!!.id).mapNotNull { m[it] } }
+            G_ALL -> visible
             searchKey -> searchResults
             else -> Repo.byGroup[g] ?: emptyList()
         }
@@ -321,7 +328,7 @@ class PlayerActivity : Activity() {
     // ---------- Listen / Overlay ----------
 
     private val menuItems get() = listOf(
-        "TV-Guide", "Multi-View", "Suche", "Playlists", "Aktualisieren",
+        "TV-Guide", "Multi-View", "Suche", "Gruppen / Länder", "Playlists", "Aktualisieren",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Beenden"
     )
 
@@ -340,20 +347,124 @@ class PlayerActivity : Activity() {
 
         channelAdapter = ChannelAdapter(
             onFocus = { showDetails(it) },
-            onClick = { c -> playingGroup = viewingGroup; play(c, channelAdapter.items); hideOverlay() },
-            onLongClick = { c ->
-                val pid = playlist?.id ?: return@ChannelAdapter
-                val added = store.toggleFavorite(pid, c.url)
-                toast(if (added) "★ ${c.name} zu Favoriten hinzugefügt" else "${c.name} aus Favoriten entfernt")
-                channelAdapter.favorites = store.favorites(pid)
-                val i = channelAdapter.indexOf(c.url)
-                if (i >= 0) channelAdapter.notifyItemChanged(i)
-                refreshGroupCounts()
-            }
+            onClick = { c ->
+                if (c.url == current?.url && !isTouchDevice) hideOverlay() // zweites OK = Vollbild
+                else {
+                    playingGroup = viewingGroup
+                    play(c, channelAdapter.items)
+                    if (isTouchDevice) hideOverlay() else { showDetails(c); armOverlayTimer() }
+                }
+            },
+            onLongClick = { c -> channelOptions(c) }
         )
         channelList.layoutManager = LinearLayoutManager(this)
         channelList.adapter = channelAdapter
         channelList.itemAnimator = null
+    }
+
+    /** OK lang drücken auf einem Sender – wie bei TiviMate ein Auswahlmenü */
+    private fun channelOptions(c: Channel) {
+        armOverlayTimer()
+        val fav = store.isFavorite(c)
+        AlertDialog.Builder(this)
+            .setTitle("${c.number}  ${c.name}")
+            .setItems(arrayOf(
+                if (fav) "Aus Favoriten entfernen" else "★ Zu Favoriten hinzufügen",
+                "In Multi-View öffnen",
+                "Abspielen"
+            )) { _, w ->
+                when (w) {
+                    0 -> {
+                        val added = store.toggleFavorite(c)
+                        toast(if (added) "★ ${c.name} zu Favoriten hinzugefügt" else "${c.name} aus Favoriten entfernt")
+                        channelAdapter.favorites = store.favorites()
+                        if (viewingGroup == G_FAV) channelAdapter.items = channelsOf(G_FAV)
+                        else channelAdapter.indexOf(c.url).let { if (it >= 0) channelAdapter.notifyItemChanged(it) }
+                        refreshGroupCounts()
+                        focusChannel(channelAdapter.indexOf(c.url).coerceAtLeast(0))
+                    }
+                    1 -> {
+                        val tiles = MultiViewActivity.tiles
+                        if (c.url !in tiles) {
+                            current?.url?.let { u -> if (u !in tiles) tiles.indexOfFirst { it == null }.takeIf { it >= 0 }?.let { tiles[it] = u } }
+                            val free = tiles.indexOfFirst { it == null }
+                            tiles[if (free >= 0) free else 3] = c.url
+                        }
+                        openMulti()
+                    }
+                    2 -> { playingGroup = viewingGroup; play(c, channelAdapter.items); hideOverlay() }
+                }
+            }.show()
+    }
+
+    // ---------- Gruppen verwalten ----------
+
+    private fun manageGroups() {
+        val pid = playlist?.id ?: return
+        if (Repo.groups.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Gruppen verwalten")
+            .setItems(arrayOf("Nach Ländern auswählen", "Gruppen einzeln ein-/ausblenden", "Alle Gruppen einblenden")) { _, w ->
+                when (w) {
+                    0 -> chooseCountries(pid)
+                    1 -> chooseGroups(pid)
+                    2 -> { store.setHiddenGroups(pid, emptySet()); applyGroupChange("Alle Gruppen eingeblendet") }
+                }
+            }.show()
+    }
+
+    private fun chooseCountries(pid: String) {
+        val byCountry = LinkedHashMap<String, MutableList<String>>()
+        Repo.groups.forEach { g -> byCountry.getOrPut(Countries.code(g)) { mutableListOf() }.add(g) }
+        val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { -(byCountry[it]?.size ?: 0) }))
+        val hiddenNow = store.hiddenGroups(pid)
+        val checked = BooleanArray(codes.size) { i -> byCountry[codes[i]]!!.any { it !in hiddenNow } }
+        val labels = codes.map { c ->
+            val n = byCountry[c]!!.sumOf { g -> Repo.byGroup[g]?.size ?: 0 }
+            "${Countries.label(c)}  ·  ${byCountry[c]!!.size} Gruppen, $n Sender"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Welche Länder anzeigen?")
+            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+            .setPositiveButton("Übernehmen") { _, _ ->
+                val hide = HashSet<String>()
+                codes.forEachIndexed { i, c -> if (!checked[i]) hide.addAll(byCountry[c]!!) }
+                if (hide.size == Repo.groups.size) { toast("Mindestens ein Land muss sichtbar bleiben"); return@setPositiveButton }
+                store.setHiddenGroups(pid, hide)
+                applyGroupChange("${codes.indices.count { checked[it] }} Länder ausgewählt")
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
+    private fun chooseGroups(pid: String) {
+        val groups = Repo.groups
+        val hiddenNow = store.hiddenGroups(pid)
+        val checked = BooleanArray(groups.size) { groups[it] !in hiddenNow }
+        val labels = groups.map { "$it  (${Repo.byGroup[it]?.size ?: 0})" }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Sichtbare Gruppen (Haken = anzeigen)")
+            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+            .setPositiveButton("Übernehmen") { _, _ ->
+                val hide = groups.filterIndexed { i, _ -> !checked[i] }.toSet()
+                if (hide.size == groups.size) { toast("Mindestens eine Gruppe muss sichtbar bleiben"); return@setPositiveButton }
+                store.setHiddenGroups(pid, hide)
+                applyGroupChange("${groups.size - hide.size} von ${groups.size} Gruppen sichtbar")
+            }
+            .setNeutralButton("Alle an") { _, _ -> store.setHiddenGroups(pid, emptySet()); applyGroupChange("Alle Gruppen eingeblendet") }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
+    private fun applyGroupChange(msg: String) {
+        buildGroups()
+        if (playingGroup !in groupKeys) playingGroup = G_ALL
+        viewingGroup = playingGroup
+        zapList = channelsOf(playingGroup)
+        refreshGroupCounts()
+        channelAdapter.items = channelsOf(viewingGroup)
+        toast(msg)
+        if (overlay.visibility == View.VISIBLE) { menuPane.visibility = View.GONE; focusGroup() }
     }
 
     private var pendingGroup: String? = null
@@ -376,7 +487,7 @@ class PlayerActivity : Activity() {
         if (Repo.channels.isEmpty()) { showMenu(); overlay.visibility = View.VISIBLE; return }
         hideBanner()
         val pid = playlist?.id ?: return
-        channelAdapter.favorites = store.favorites(pid)
+        channelAdapter.favorites = store.favorites()
         viewingGroup = playingGroup.takeIf { it in groupKeys } ?: G_ALL
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
@@ -398,10 +509,45 @@ class PlayerActivity : Activity() {
             else -> { menuPane.visibility = View.GONE; focusChannel(channelAdapter.indexOf(current?.url)) }
         }
         current?.let { showDetails(it) }
+        previewOn()
         armOverlayTimer()
     }
 
+    /** Video als kleines Vorschaubild rechts oben in der Kanalliste */
+    private fun previewOn() {
+        if (isTouchDevice) return
+        val slot = findViewById<View>(R.id.previewSlot)
+        val pane = findViewById<View>(R.id.detailPane)
+        pane.post {
+            val w = pane.width - pane.paddingLeft - pane.paddingRight
+            if (w <= 0) return@post
+            val h = w * 9 / 16
+            if (slot.layoutParams.height != h) { slot.layoutParams = slot.layoutParams.apply { height = h }; slot.requestLayout() }
+            slot.post {
+                val root = IntArray(2); val pos = IntArray(2)
+                (playerView.parent as View).getLocationInWindow(root)
+                slot.getLocationInWindow(pos)
+                playerView.layoutParams = (playerView.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                    width = slot.width; height = slot.height
+                    gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                    leftMargin = pos[0] - root[0]; topMargin = pos[1] - root[1]
+                }
+                playerView.elevation = 20f
+                playerView.requestLayout()
+            }
+        }
+    }
+
+    private fun previewOff() {
+        playerView.layoutParams = (playerView.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+            width = -1; height = -1; leftMargin = 0; topMargin = 0
+        }
+        playerView.elevation = 0f
+        playerView.requestLayout()
+    }
+
     private fun hideOverlay() {
+        previewOff()
         overlay.visibility = View.GONE
         menuPane.visibility = View.GONE
         ui.removeCallbacks(overlayTimeout)
@@ -458,16 +604,17 @@ class PlayerActivity : Activity() {
             0 -> openGuide()
             1 -> openMulti()
             2 -> search()
-            3 -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
-            4 -> { hideOverlay(); load(true) }
-            5 -> {
+            3 -> manageGroups()
+            4 -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
+            5 -> { hideOverlay(); load(true) }
+            6 -> {
                 store.streamFormat = if (store.streamFormat == "ts") "m3u8" else "ts"
                 menuAdapter.items = menuItems.map { TextItem(it) }
-                focusAt(menuList, 5)
+                focusAt(menuList, 6)
                 if (playlist?.type == "xtream") { hideOverlay(); load(true) }
                 else toast("Gilt nur für Xtream-Codes-Playlists")
             }
-            6 -> finish()
+            7 -> finish()
         }
     }
 
@@ -505,7 +652,7 @@ class PlayerActivity : Activity() {
     private fun runSearch(q: String) {
         val query = q.trim().lowercase()
         if (query.isEmpty()) return
-        searchResults = Repo.channels.filter { it.name.lowercase().contains(query) }
+        searchResults = visible.filter { it.name.lowercase().contains(query) }
         searchKey?.let { old -> groupKeys = groupKeys - old }
         val key = "Suche: $q"
         searchKey = key

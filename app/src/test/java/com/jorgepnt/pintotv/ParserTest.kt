@@ -80,3 +80,21 @@ class XtreamLinkTest {
         org.junit.Assert.assertEquals(plain, Xtream.normalize(plain))
     }
 }
+
+class CountryTest {
+    @Test fun codes() {
+        org.junit.Assert.assertEquals("DE", Countries.code("DE | Sport"))
+        org.junit.Assert.assertEquals("PT", Countries.code("|PT| Desporto"))
+        org.junit.Assert.assertEquals("UK", Countries.code("[UK] News"))
+        org.junit.Assert.assertEquals("FR", Countries.code("FR: Cinéma"))
+        org.junit.Assert.assertEquals("DE", Countries.code("Deutschland HD"))
+        org.junit.Assert.assertEquals("PT", Countries.code("PT - Notícias"))
+        org.junit.Assert.assertEquals("?", Countries.code("Sport"))
+        org.junit.Assert.assertEquals("Deutschland (DE)", Countries.label("DE"))
+    }
+    @Test fun favKeyStable() {
+        val a = Channel("Das Erste HD", "http://a/live/u/p/1.ts", null, "g", null, 1)
+        val b = a.copy(url = "http://a/live/u/p/1.m3u8")
+        org.junit.Assert.assertEquals(favKey(a), favKey(b))
+    }
+}

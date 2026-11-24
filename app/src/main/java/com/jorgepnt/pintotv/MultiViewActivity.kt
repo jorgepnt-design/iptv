@@ -82,6 +82,7 @@ class MultiViewActivity : Activity() {
         }
         var player: ExoPlayer? = null
         var channel: Channel? = null
+        var errors = 0
 
         init {
             frame.setBackgroundColor(Color.BLACK)
@@ -106,6 +107,8 @@ class MultiViewActivity : Activity() {
                 return
             }
             hint.visibility = View.GONE
+            hint.text = "＋\nOK drücken, um einen Sender zu wählen"
+            errors = 0
             val (cur, _) = Repo.nowNext(c)
             label.text = "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
             label.visibility = View.VISIBLE
@@ -113,12 +116,18 @@ class MultiViewActivity : Activity() {
                 player = np
                 view.player = np
                 np.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_READY) errors = 0 }
+
                     override fun onPlayerError(error: PlaybackException) {
                         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                             np.seekToDefaultPosition(); np.prepare()
+                        } else if (++errors <= 2) {
+                            label.text = "${channel?.name ?: ""}  ·  neuer Versuch …"
+                            view.postDelayed({ if (player === np && channel != null) { np.prepare(); np.play() } }, 3000)
                         } else {
-                            label.text = "${channel?.name ?: ""}  ·  nicht verfügbar"
-                            view.postDelayed({ if (player === np && channel != null) { np.prepare(); np.play() } }, 4000)
+                            label.text = "${channel?.name ?: ""}  ·  kein Bild"
+                            hint.text = "Sender lädt nicht.\nOft erlaubt der Anbieter nur ${if (Xtream.maxConnections > 0) "${Xtream.maxConnections} Verbindung(en)" else "wenige Verbindungen"} gleichzeitig.\nOK: anderen Sender wählen"
+                            hint.visibility = View.VISIBLE
                         }
                     }
                 })
@@ -159,7 +168,7 @@ class MultiViewActivity : Activity() {
             setTextColor(Color.WHITE); textSize = 15f
             setBackgroundResource(R.drawable.label_bg)
             setPadding(24, 10, 24, 10)
-            text = "Multi-View  ·  Fenster wählen = Ton  ·  OK/Antippen: Sender  ·  Menü/lang drücken: 2 oder 4 Fenster  ·  Zurück: Ende"
+            text = (if (Xtream.maxConnections > 0) "Dein Anbieter erlaubt ${Xtream.maxConnections} Verbindung(en)  ·  " else "") + "Multi-View  ·  Fenster wählen = Ton  ·  OK/Antippen: Sender  ·  Menü/lang drücken: 2 oder 4 Fenster  ·  Zurück: Ende"
         }
         root.addView(info, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = 20 })
         info.postDelayed({ info.visibility = View.GONE }, 6000)
@@ -267,13 +276,32 @@ class MultiViewActivity : Activity() {
 
     private fun pickGroup() {
         if (Repo.channels.isEmpty()) { toast("Keine Kanäle geladen"); return }
+        val max = Xtream.maxConnections
+        val active = list.take(count()).count { it.channel != null && it.index != sel }
+        if (max in 1..active) {
+            AlertDialog.Builder(this)
+                .setTitle("Verbindungs-Limit")
+                .setMessage("Dein Anbieter erlaubt nur $max gleichzeitige Verbindung${if (max == 1) "" else "en"}. " +
+                    "Es laufen schon $active Sender. Ein weiterer Sender wird wahrscheinlich nicht laden " +
+                    "oder einen anderen abbrechen.\n\nFür Multi-View brauchst du ein Abo mit mehr Verbindungen.")
+                .setPositiveButton("Trotzdem versuchen") { _, _ -> pickGroupNow() }
+                .setNegativeButton("Abbrechen", null)
+                .show()
+            return
+        }
+        pickGroupNow()
+    }
+
+    private fun pickGroupNow() {
         val pid = Repo.playlistId ?: return
-        val favs = Store(this).favorites(pid)
-        val favList = Repo.channels.filter { it.url in favs }
+        val store = Store(this)
+        val favs = store.favorites()
+        val favList = Repo.channels.filter { favKey(it) in favs }.distinctBy { favKey(it) }
+        val hidden = store.hiddenGroups(pid)
         val groups = ArrayList<Pair<String, List<Channel>>>()
         if (favList.isNotEmpty()) groups.add(PlayerActivity.G_FAV to favList)
-        groups.add(PlayerActivity.G_ALL to Repo.channels)
-        Repo.groups.forEach { g -> groups.add(g to (Repo.byGroup[g] ?: emptyList())) }
+        groups.add(PlayerActivity.G_ALL to Repo.channels.filter { it.group !in hidden })
+        Repo.groups.filter { it !in hidden }.forEach { g -> groups.add(g to (Repo.byGroup[g] ?: emptyList())) }
         AlertDialog.Builder(this)
             .setTitle("Gruppe wählen")
             .setItems(groups.map { "${it.first}  (${it.second.size})" }.toTypedArray()) { _, w -> pickChannel(groups[w].second) }
