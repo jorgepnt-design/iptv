@@ -844,7 +844,9 @@ class PlayerActivity : Activity() {
         if (n == 0) return
         val p = pos.coerceIn(0, n - 1)
         val lm = rv.layoutManager as LinearLayoutManager
-        lm.scrollToPositionWithOffset(p, if (rv.height > 0) rv.height / 3 else 0)
+        // weit oben: Liste ganz oben anfangen lassen, damit „☰ Menü“ & Co. sichtbar bleiben
+        if (p <= 6) lm.scrollToPositionWithOffset(0, 0)
+        else lm.scrollToPositionWithOffset(p, if (rv.height > 0) rv.height / 3 else 0)
         // so lange versuchen, bis die Liste fertig aufgebaut ist (z. B. direkt nach dem Aufklappen)
         var tries = 0
         lateinit var attempt: Runnable
