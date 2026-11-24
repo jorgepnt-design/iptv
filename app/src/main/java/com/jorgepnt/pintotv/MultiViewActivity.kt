@@ -36,8 +36,8 @@ object Players {
             val src = DefaultHttpDataSource.Factory()
                 .setUserAgent(ua())
                 .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(20000)
+                .setConnectTimeoutMs(8000)
+                .setReadTimeoutMs(10000)
                 .createDataSource()
             // bei laufender Aufnahme die empfangenen Daten zusätzlich in die Datei schreiben
             if (recordable && Recorder.active) androidx.media3.datasource.TeeDataSource(src, Recorder.sink()) else src

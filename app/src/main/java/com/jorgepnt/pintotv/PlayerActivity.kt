@@ -600,7 +600,12 @@ class PlayerActivity : Activity() {
                 .setPositiveButton("OK", null).show()
         }
         applyRecQuality(true)
-        startStream(c) // neu verbinden, damit ab jetzt mitgeschrieben wird
+        // HLS: jedes Stück wird einzeln geladen → ab dem nächsten Stück wird automatisch mitgeschrieben, kein Neuverbinden nötig.
+        // Durchgehender TS-Stream: einmal neu verbinden, damit ab jetzt mitgeschrieben wird.
+        val isHls = c.url.contains(".m3u8", true) ||
+            player.currentMediaItem?.localConfiguration?.mimeType == androidx.media3.common.MimeTypes.APPLICATION_M3U8 ||
+            player.currentManifest is androidx.media3.exoplayer.hls.HlsManifest
+        if (!isHls) startStream(c)
         findViewById<View>(R.id.recIndicator).visibility = View.VISIBLE
         ui.removeCallbacks(recTicker); ui.post(recTicker)
         toast("● Aufnahme von „${c.name}“ läuft")

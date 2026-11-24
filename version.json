@@ -1,6 +1,6 @@
 {
-  "versionCode": 38,
-  "versionName": "2.26",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=38",
-  "notes": "• Genauere Fehlermeldung nach einem Absturz (Grund + betroffene Programmteile)"
+  "versionCode": 39,
+  "versionName": "2.27",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=39",
+  "notes": "• Aufnahme bei HLS-Sendern ohne Neuverbinden (keine doppelte Verbindung zum Anbieter)\n• Hängende Verbindungen werden schneller abgebrochen und neu aufgebaut"
 }

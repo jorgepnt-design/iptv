@@ -31,7 +31,9 @@ object Updater {
         scope.launch {
             val info = withContext(Dispatchers.IO) {
                 try {
-                    val o = JSONObject(Http.text("$VERSION_URL?t=${System.currentTimeMillis()}"))
+                    val c = java.net.URL("$VERSION_URL?t=${System.currentTimeMillis()}").openConnection() as java.net.HttpURLConnection
+                    c.connectTimeout = 6000; c.readTimeout = 6000
+                    val o = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
                     Info(o.getInt("versionCode"), o.getString("versionName"), o.getString("url"), o.optString("notes"))
                 } catch (e: Exception) { null }
             }
