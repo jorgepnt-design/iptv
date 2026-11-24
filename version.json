@@ -1,6 +1,6 @@
 {
-  "versionCode": 47,
-  "versionName": "2.35",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=47",
-  "notes": "• Timeshift: Live-TV pausieren und zurückspulen (Play/Pause-Taste oder Menü → Pause)\n• Im Timeshift: ◀ 10 s zurück, ▶ 30 s vor, Zurück = wieder Live\n• Anzeige, wie weit man hinter Live ist"
+  "versionCode": 48,
+  "versionName": "2.36",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=48",
+  "notes": "• Info-Leiste beim Umschalten deutlich kleiner und schmaler\n• Timeshift-Leiste ebenfalls kompakter"
 }

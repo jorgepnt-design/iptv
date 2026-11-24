@@ -138,12 +138,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginHorizontal="40dp"
-        android:layout_marginBottom="28dp"
+        android:layout_marginHorizontal="140dp"
+        android:layout_marginBottom="20dp"
         android:background="@drawable/card_bg"
         android:elevation="9dp"
         android:orientation="vertical"
-        android:padding="18dp"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
         android:visibility="gone">
 
         <TextView
@@ -151,15 +152,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="@color/text"
-            android:textSize="18sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <ProgressBar
             android:id="@+id/tsProgress"
             style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="6dp"
-            android:layout_marginVertical="8dp"
+            android:layout_height="3dp"
+            android:layout_marginVertical="4dp"
             android:max="1000"
             android:progressDrawable="@drawable/progress" />
 
@@ -169,7 +170,7 @@
             android:layout_height="wrap_content"
             android:text="⏯ Pause/Weiter  ·  ◀ 10 s zurück  ·  ▶ 30 s vor  ·  Zurück = Live"
             android:textColor="@color/text3"
-            android:textSize="14sp" />
+            android:textSize="11sp" />
     </LinearLayout>
 
     <!-- Info-Leiste unten beim Umschalten -->
@@ -178,26 +179,27 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginHorizontal="40dp"
-        android:layout_marginBottom="28dp"
+        android:layout_marginHorizontal="140dp"
+        android:layout_marginBottom="20dp"
         android:background="@drawable/card_bg"
-        android:elevation="8dp"
+        android:elevation="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="20dp"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
         android:visibility="gone">
 
         <LinearLayout
-            android:layout_width="150dp"
+            android:layout_width="78dp"
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
             <FrameLayout
-                android:layout_width="150dp"
-                android:layout_height="88dp"
+                android:layout_width="78dp"
+                android:layout_height="44dp"
                 android:background="@drawable/logo_bg"
-                android:padding="10dp">
+                android:padding="4dp">
 
                 <ImageView
                     android:id="@+id/bannerLogo"
@@ -210,16 +212,16 @@
                 android:id="@+id/bannerNumber"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="2dp"
                 android:textColor="@color/accent"
-                android:textSize="20sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -236,7 +238,7 @@
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:textColor="@color/text"
-                    android:textSize="26sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -245,7 +247,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="12dp"
                     android:textColor="@color/text2"
-                    android:textSize="13sp" />
+                    android:textSize="10sp" />
             </LinearLayout>
 
             <TextView
@@ -255,22 +257,22 @@
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:textColor="@color/text3"
-                android:textSize="14sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/bannerNow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/text"
-                android:textSize="19sp" />
+                android:textSize="13sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginVertical="6dp"
+                android:layout_marginVertical="3dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -278,7 +280,7 @@
                     android:id="@+id/bannerProgress"
                     style="@android:style/Widget.ProgressBar.Horizontal"
                     android:layout_width="0dp"
-                    android:layout_height="5dp"
+                    android:layout_height="3dp"
                     android:layout_weight="1"
                     android:max="1000"
                     android:progressDrawable="@drawable/progress" />
@@ -289,7 +291,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="12dp"
                     android:textColor="@color/text2"
-                    android:textSize="14sp" />
+                    android:textSize="11sp" />
             </LinearLayout>
 
             <TextView
@@ -299,14 +301,14 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/text3"
-                android:textSize="16sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="14dp"
             android:gravity="end"
             android:orientation="vertical">
 
@@ -315,7 +317,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text"
-                android:textSize="30sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -323,7 +325,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text3"
-                android:textSize="14sp" />
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 
