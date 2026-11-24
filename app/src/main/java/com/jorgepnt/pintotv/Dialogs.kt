@@ -19,10 +19,10 @@ object Dialogs {
         head.addView(TextView(a).apply { text = title; textSize = 20f; setTextColor(Color.WHITE) })
         val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
         fun btn(t: String) = Button(a).apply {
-            text = t; isAllCaps = false; textSize = 15f
+            text = t; isAllCaps = false; textSize = 14f; maxLines = 1
             setTextColor(Color.WHITE)
             setBackgroundResource(R.drawable.button_bg)
-            setPadding((16 * d).toInt(), 0, (16 * d).toInt(), 0)
+            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
             layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (10 * d).toInt() }
         }
         val bApply = btn("✓ Übernehmen"); val bAll = btn("Alle an"); val bNone = btn("Alle aus"); val bCancel = btn("Abbrechen")
@@ -31,6 +31,10 @@ object Dialogs {
         val dlg = AlertDialog.Builder(a)
             .setCustomTitle(head)
             .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+            // dieselben Knöpfe zusätzlich unten
+            .setPositiveButton("✓ Übernehmen") { _, _ -> onApply() }
+            .setNeutralButton("Alle an/aus", null)
+            .setNegativeButton("Abbrechen", null)
             .create()
         fun setAll(on: Boolean) {
             for (i in checked.indices) { checked[i] = on; dlg.listView.setItemChecked(i, on) }
@@ -40,7 +44,10 @@ object Dialogs {
         bNone.setOnClickListener { setAll(false) }
         bCancel.setOnClickListener { dlg.dismiss() }
         bApply.setOnClickListener { dlg.dismiss(); onApply() }
-        dlg.setOnShowListener { bApply.requestFocus() }
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { setAll(!checked.all { it }) }
+            bApply.requestFocus()
+        }
         dlg.show()
     }
 
