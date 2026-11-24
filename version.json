@@ -1,6 +1,6 @@
 {
-  "versionCode": 19,
-  "versionName": "2.7",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=19",
-  "notes": "• Gruppen verwalten: jetzt auch Filme und Serien nach Ländern/Kategorien ausblenden\n• Einmal OK = Vorschau, nochmal OK = Vollbild\n• Updates direkt in der App"
+  "versionCode": 20,
+  "versionName": "2.8",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=20",
+  "notes": "• „☰ Menü“ ganz oben in der Gruppenliste\n• Filme und Serien nach Ländern/Kategorien ausblenden (Menü → Gruppen / Länder)"
 }

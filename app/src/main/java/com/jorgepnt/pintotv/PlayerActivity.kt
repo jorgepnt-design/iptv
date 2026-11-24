@@ -40,6 +40,7 @@ class PlayerActivity : Activity() {
     companion object {
         const val G_FAV = "★ Favoriten"
         const val G_RECENT = "Zuletzt gesehen"
+        const val G_MENU = "☰ Menü"
         const val G_SWITCH = "⇄ Playlist wechseln"
         const val G_MOVIES = "🎬 Filme"
         const val G_SERIES = "📺 Serien"
@@ -354,7 +355,7 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        groupKeys = listOf(G_MENU, G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
@@ -391,10 +392,11 @@ class PlayerActivity : Activity() {
         menuList.itemAnimator = null
 
         groupAdapter = TextAdapter(
-            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it != G_SWITCH && it != G_MOVIES && it != G_SERIES }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
+            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it !in specialGroups }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
             onClick = { pos ->
                 val g = groupKeys.getOrNull(pos)
-                if (g == G_SWITCH) switchPlaylist()
+                if (g == G_MENU) showMenu()
+                else if (g == G_SWITCH) switchPlaylist()
                 else if (g == G_MOVIES || g == G_SERIES) openVod(g == G_SERIES)
                 else { g?.let { showGroup(it) }; focusChannel(-1) }
             }
@@ -505,7 +507,7 @@ class PlayerActivity : Activity() {
         channelAdapter.favorites = store.favorites()
         val oldView = viewingGroup
         buildGroups()
-        if (viewingGroup !in groupKeys || viewingGroup in setOf(G_SWITCH, G_MOVIES, G_SERIES)) viewingGroup = groupKeys.getOrElse(3) { G_ALL }
+        if (viewingGroup !in groupKeys || viewingGroup in specialGroups) viewingGroup = groupKeys.getOrElse(specialGroups.size) { G_ALL }
         if (playingGroup !in groupKeys) playingGroup = G_ALL
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
@@ -678,7 +680,8 @@ class PlayerActivity : Activity() {
 
     private fun refreshGroupCounts() {
         groupAdapter.items = groupKeys.map { g ->
-            if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
+            if (g == G_MENU) TextItem(G_MENU, "›")
+            else if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
             else if (g == G_MOVIES || g == G_SERIES) TextItem(g, "›")
             else TextItem(g, channelsOf(g).size.toString())
         }
@@ -767,7 +770,8 @@ class PlayerActivity : Activity() {
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
 
-    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(3))
+    private val specialGroups = setOf(G_MENU, G_SWITCH, G_MOVIES, G_SERIES)
+    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(specialGroups.size))
 
     private fun openVod(series: Boolean) {
         if (playlist == null) return
