@@ -426,6 +426,25 @@ class PlayerActivity : Activity() {
             }.show()
     }
 
+    /** Mehrfachauswahl mit „Alle an/aus“-Knopf, der den Dialog nicht schließt */
+    private fun multiChoice(title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) {
+        val dlg = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+            .setPositiveButton("Übernehmen") { _, _ -> onApply() }
+            .setNeutralButton("Alle an/aus", null)
+            .setNegativeButton("Abbrechen", null)
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val target = !checked.all { it }
+                for (i in checked.indices) { checked[i] = target; dlg.listView.setItemChecked(i, target) }
+                toast(if (target) "Alle ausgewählt" else "Alle abgewählt")
+            }
+        }
+        dlg.show()
+    }
+
     private fun chooseCountries(pid: String) {
         val byCountry = LinkedHashMap<String, MutableList<String>>()
         Repo.groups.forEach { g -> byCountry.getOrPut(Countries.code(g)) { mutableListOf() }.add(g) }
@@ -436,18 +455,13 @@ class PlayerActivity : Activity() {
             val n = byCountry[c]!!.sumOf { g -> Repo.byGroup[g]?.size ?: 0 }
             "${Countries.label(c)}  ·  ${byCountry[c]!!.size} Gruppen, $n Sender"
         }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Welche Länder anzeigen?")
-            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
-            .setPositiveButton("Übernehmen") { _, _ ->
-                val hide = HashSet<String>()
-                codes.forEachIndexed { i, c -> if (!checked[i]) hide.addAll(byCountry[c]!!) }
-                if (hide.size == Repo.groups.size) { toast("Mindestens ein Land muss sichtbar bleiben"); return@setPositiveButton }
-                store.setHiddenGroups(pid, hide)
-                applyGroupChange("${codes.indices.count { checked[it] }} Länder ausgewählt")
-            }
-            .setNegativeButton("Abbrechen", null)
-            .show()
+        multiChoice("Welche Länder anzeigen?", labels, checked) {
+            val hide = HashSet<String>()
+            codes.forEachIndexed { i, c -> if (!checked[i]) hide.addAll(byCountry[c]!!) }
+            if (hide.size == Repo.groups.size) { toast("Mindestens ein Land muss sichtbar bleiben"); return@multiChoice }
+            store.setHiddenGroups(pid, hide)
+            applyGroupChange("${codes.indices.count { checked[it] }} Länder ausgewählt")
+        }
     }
 
     private fun chooseGroups(pid: String) {
@@ -455,18 +469,12 @@ class PlayerActivity : Activity() {
         val hiddenNow = store.hiddenGroups(pid)
         val checked = BooleanArray(groups.size) { groups[it] !in hiddenNow }
         val labels = groups.map { "$it  (${Repo.byGroup[it]?.size ?: 0})" }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Sichtbare Gruppen (Haken = anzeigen)")
-            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
-            .setPositiveButton("Übernehmen") { _, _ ->
-                val hide = groups.filterIndexed { i, _ -> !checked[i] }.toSet()
-                if (hide.size == groups.size) { toast("Mindestens eine Gruppe muss sichtbar bleiben"); return@setPositiveButton }
-                store.setHiddenGroups(pid, hide)
-                applyGroupChange("${groups.size - hide.size} von ${groups.size} Gruppen sichtbar")
-            }
-            .setNeutralButton("Alle an") { _, _ -> store.setHiddenGroups(pid, emptySet()); applyGroupChange("Alle Gruppen eingeblendet") }
-            .setNegativeButton("Abbrechen", null)
-            .show()
+        multiChoice("Sichtbare Gruppen (Haken = anzeigen)", labels, checked) {
+            val hide = groups.filterIndexed { i, _ -> !checked[i] }.toSet()
+            if (hide.size == groups.size) { toast("Mindestens eine Gruppe muss sichtbar bleiben"); return@multiChoice }
+            store.setHiddenGroups(pid, hide)
+            applyGroupChange("${groups.size - hide.size} von ${groups.size} Gruppen sichtbar")
+        }
     }
 
     private fun applyGroupChange(msg: String) {

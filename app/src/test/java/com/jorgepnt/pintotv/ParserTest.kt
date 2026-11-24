@@ -90,6 +90,11 @@ class CountryTest {
         org.junit.Assert.assertEquals("DE", Countries.code("Deutschland HD"))
         org.junit.Assert.assertEquals("PT", Countries.code("PT - Notícias"))
         org.junit.Assert.assertEquals("?", Countries.code("Sport"))
+        org.junit.Assert.assertEquals("TR", Countries.code("TR ✪ SPOR"))
+        org.junit.Assert.assertEquals("GR", Countries.code("GR ✪ Ντοκιμαντέρ | DOCUMENTARY"))
+        org.junit.Assert.assertEquals("ES", Countries.code("ES ✪ CINEMA"))
+        org.junit.Assert.assertEquals("?", Countries.code("DAZN SENDER"))
+        org.junit.Assert.assertEquals("?", Countries.code("NEWS"))
         org.junit.Assert.assertEquals("Deutschland (DE)", Countries.label("DE"))
     }
     @Test fun favKeyStable() {

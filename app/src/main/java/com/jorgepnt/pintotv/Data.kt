@@ -50,7 +50,8 @@ fun favKey(c: Channel) = c.name.trim().lowercase()
 
 /** Land aus Gruppennamen wie „DE | Sport“, „|PT| Desporto“, „[UK] News“, „FR: Cinéma“ */
 object Countries {
-    private val prefix = Regex("^[\\s|\\[(]*([A-Za-z]{2,3})\\s*[|:\\]\\)\\-–]")
+    // Ländercode am Anfang, gefolgt von einem beliebigen Trennzeichen: „DE |“, „TR ✪“, „PT:“, „[UK]“
+    private val prefix = Regex("^[\\s|\\[(★✪•]*([A-Za-z]{2,3})\\s*[^\\p{L}\\p{N}\\s]")
     private val names = mapOf(
         "DE" to "Deutschland", "GER" to "Deutschland", "AT" to "Österreich", "CH" to "Schweiz", "PT" to "Portugal",
         "BR" to "Brasilien", "ES" to "Spanien", "FR" to "Frankreich", "IT" to "Italien", "UK" to "Großbritannien",
