@@ -117,6 +117,9 @@ class PlayerActivity : Activity() {
                 .show()
         }
 
+        // einmal beim Start still nach Updates schauen
+        ui.postDelayed({ Updater.check(this, scope, quiet = true) }, 8000)
+
         if (store.playlists().isEmpty()) {
             showStatus("Willkommen bei PintoTV ${appVersion(this)}!\nBitte zuerst eine Playlist hinzufügen.")
             startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST)
@@ -378,7 +381,7 @@ class PlayerActivity : Activity() {
 
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
-        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Beenden"
+        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
 
     private fun initLists() {
@@ -403,12 +406,16 @@ class PlayerActivity : Activity() {
         channelAdapter = ChannelAdapter(
             onFocus = { showDetails(it) },
             onClick = { c ->
+                val now = android.os.SystemClock.uptimeMillis()
+                // Sperre gegen Doppel-Klicks: Vollbild erst bei einem zweiten, bewussten OK
+                if (c.url == current?.url && now - lastPreviewAt < 600) return@ChannelAdapter
                 if (c.url == current?.url || isTouchDevice) {
                     // zweites OK auf den laufenden Sender = Vollbild
                     if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
                     hideOverlay()
                 } else {
                     // erstes OK = in der Vorschau rechts abspielen, Liste bleibt offen
+                    lastPreviewAt = now
                     playingGroup = viewingGroup
                     play(c, channelAdapter.items)
                     showDetails(c)
@@ -793,6 +800,7 @@ class PlayerActivity : Activity() {
                 if (playlist?.type == "xtream") { hideOverlay(); load(true) }
                 else toast("Gilt nur für Xtream-Codes-Playlists")
             }
+            item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
             item == "Beenden" -> finish()
         }
     }
@@ -902,6 +910,7 @@ class PlayerActivity : Activity() {
     }
 
     private var swallowCenter = false
+    private var lastPreviewAt = 0L
     private val centerKeys = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
