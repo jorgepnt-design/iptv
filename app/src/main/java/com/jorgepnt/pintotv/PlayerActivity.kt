@@ -403,9 +403,17 @@ class PlayerActivity : Activity() {
         channelAdapter = ChannelAdapter(
             onFocus = { showDetails(it) },
             onClick = { c ->
-                // OK = Sender sofort im Vollbild (wie TiviMate)
-                if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
-                hideOverlay()
+                if (c.url == current?.url || isTouchDevice) {
+                    // zweites OK auf den laufenden Sender = Vollbild
+                    if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
+                    hideOverlay()
+                } else {
+                    // erstes OK = in der Vorschau rechts abspielen, Liste bleibt offen
+                    playingGroup = viewingGroup
+                    play(c, channelAdapter.items)
+                    showDetails(c)
+                    armOverlayTimer()
+                }
             },
             onLongClick = { c -> channelOptions(c) }
         )
