@@ -1,6 +1,6 @@
 {
-  "versionCode": 21,
-  "versionName": "2.9",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=21",
-  "notes": "• Auswahl-Fenster: Knöpfe oben UND unten\n• „☰ Menü“ ganz oben in der Gruppenliste"
+  "versionCode": 22,
+  "versionName": "2.10",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=22",
+  "notes": "• „☰ Menü“ öffnet sich jetzt zuverlässig (Fokus springt ins Menü)\n• Auswahl-Fenster: Knöpfe oben und unten"
 }

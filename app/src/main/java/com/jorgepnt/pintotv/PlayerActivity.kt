@@ -765,7 +765,10 @@ class PlayerActivity : Activity() {
     private fun showMenu() {
         menuAdapter.items = menuItems.map { TextItem(it) }
         menuPane.visibility = View.VISIBLE
+        overlay.visibility = View.VISIBLE
+        menuPane.requestLayout()
         focusAt(menuList, 0)
+        armOverlayTimer()
     }
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
@@ -790,12 +793,16 @@ class PlayerActivity : Activity() {
         if (n == 0) return
         val p = pos.coerceIn(0, n - 1)
         val lm = rv.layoutManager as LinearLayoutManager
-        lm.scrollToPositionWithOffset(p, rv.height / 3)
-        rv.post {
+        lm.scrollToPositionWithOffset(p, if (rv.height > 0) rv.height / 3 else 0)
+        // so lange versuchen, bis die Liste fertig aufgebaut ist (z. B. direkt nach dem Aufklappen)
+        var tries = 0
+        lateinit var attempt: Runnable
+        attempt = Runnable {
             val vh = rv.findViewHolderForAdapterPosition(p)
-            if (vh != null) vh.itemView.requestFocus()
-            else rv.postDelayed({ rv.findViewHolderForAdapterPosition(p)?.itemView?.requestFocus() }, 50)
+            if (vh != null && vh.itemView.isShown) vh.itemView.requestFocus()
+            else if (++tries < 20) { rv.requestLayout(); rv.postDelayed(attempt, 40) }
         }
+        rv.post(attempt)
     }
 
     private fun showDetails(c: Channel) {
