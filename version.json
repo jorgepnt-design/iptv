@@ -1,6 +1,6 @@
 {
-  "versionCode": 37,
-  "versionName": "2.25",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=37",
-  "notes": "• Aufnahme: Absturz („App reagiert nicht“) behoben – alle Speicherzugriffe laufen jetzt im Hintergrund\n• Warnung, falls der Speicher (z. B. USB-Stick) zu langsam ist"
+  "versionCode": 38,
+  "versionName": "2.26",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=38",
+  "notes": "• Genauere Fehlermeldung nach einem Absturz (Grund + betroffene Programmteile)"
 }

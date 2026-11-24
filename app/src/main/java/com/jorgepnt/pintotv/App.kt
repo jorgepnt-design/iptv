@@ -43,9 +43,26 @@ class App : Application() {
                 try {
                     info.traceInputStream?.bufferedReader()?.use { r ->
                         val lines = r.readLines()
-                        val main = lines.dropWhile { !it.startsWith("\"main\"") }.take(14)
-                        val mine = lines.filter { it.contains("pintotv") }.take(6)
-                        text += "\n" + (if (main.isNotEmpty()) main else lines.take(14)).joinToString("\n") + "\n" + mine.joinToString("\n")
+                        // 1) Grund laut Android („Subject: Input dispatching timed out …“)
+                        val subject = lines.filter { it.startsWith("Subject") || it.contains("Reason") }.take(2)
+                        // 2) alle Abläufe, die in PintoTV oder im Player stecken – mit Name des Ablaufs
+                        val interesting = ArrayList<String>()
+                        var thread = ""
+                        var shownFor = ""
+                        for (l in lines) {
+                            if (l.startsWith("\"")) thread = l.substringBefore(" prio").take(40)
+                            val t = l.trim()
+                            if (t.startsWith("at ") && (t.contains("pintotv") || t.contains("media3") || t.contains("exoplayer") ||
+                                        t.contains("FileOutputStream") || t.contains("MediaCodec") || t.contains("Surface"))) {
+                                if (shownFor != thread) { interesting.add("▶ $thread"); shownFor = thread }
+                                if (interesting.size < 22) interesting.add("  " + t.removePrefix("at ").take(90))
+                            }
+                        }
+                        // 3) Hauptablauf (Java-Teil)
+                        val main = lines.dropWhile { !it.startsWith("\"main\"") }.filter { it.trim().startsWith("at ") }.take(6).map { "  " + it.trim().take(90) }
+                        text = subject.joinToString("\n") + "\n" + text + "\n\n" +
+                            (if (interesting.isNotEmpty()) interesting.joinToString("\n") else "(keine PintoTV-/Player-Abläufe aktiv)") +
+                            "\n\nmain:\n" + main.joinToString("\n")
                     }
                 } catch (_: Throwable) { }
                 text.trim()
