@@ -37,13 +37,13 @@ class EpgGridView(ctx: Context, attrs: AttributeSet?) : View(ctx, attrs) {
     private var selRow = 0
     private var firstRow = 0
 
-    private val bg = Paint().apply { color = Color.parseColor("#0B0E15") }
-    private val cellPaint = Paint().apply { color = Color.parseColor("#1A1F2B") }
-    private val cellPast = Paint().apply { color = Color.parseColor("#141821") }
-    private val cellNow = Paint().apply { color = Color.parseColor("#232B3B") }
-    private val selPaint = Paint().apply { color = Color.parseColor("#3D7BFF") }
-    private val chanPaint = Paint().apply { color = Color.parseColor("#121620") }
-    private val chanSel = Paint().apply { color = Color.parseColor("#2A3550") }
+    private val bg = Paint().apply { color = Color.parseColor("#0E1014") }
+    private val cellPaint = Paint().apply { color = Color.parseColor("#1F232C") }
+    private val cellPast = Paint().apply { color = Color.parseColor("#15181E") }
+    private val cellNow = Paint().apply { color = Color.parseColor("#283043") }
+    private val selPaint = Paint().apply { color = Color.parseColor("#2F6FED") }
+    private val chanPaint = Paint().apply { color = Color.parseColor("#181B22") }
+    private val chanSel = Paint().apply { color = Color.parseColor("#2A3142") }
     private val nowLine = Paint().apply { color = Color.parseColor("#FF4D4D"); strokeWidth = 2 * dp }
     private val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 16 * dp * 0.95f }
     private val small = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#B3FFFFFF"); textSize = 13 * dp }

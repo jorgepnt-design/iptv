@@ -198,6 +198,23 @@ class Store(ctx: Context) {
         e.apply()
     }
 
+    /** eigene Reihenfolge der Gruppen (je Playlist) */
+    fun groupOrder(pid: String): List<String> = JSONArray(sp.getString("gorder_$pid", "[]")).let { a -> (0 until a.length()).map { a.getString(it) } }
+    fun setGroupOrder(pid: String, l: List<String>) { sp.edit().putString("gorder_$pid", JSONArray(l).toString()).commit() }
+    /** Länder zuerst, z. B. ["DE","PT"] */
+    fun countryOrder(pid: String): List<String> = JSONArray(sp.getString("corder_$pid", "[]")).let { a -> (0 until a.length()).map { a.getString(it) } }
+    fun setCountryOrder(pid: String, l: List<String>) { sp.edit().putString("corder_$pid", JSONArray(l).toString()).commit() }
+    /** eigene Sendernummern (über den Sendernamen) */
+    fun customNumbers(pid: String): Map<String, Int> {
+        val o = JSONObject(sp.getString("chnum_$pid", "{}"))
+        return o.keys().asSequence().associateWith { o.getInt(it) }
+    }
+    fun setCustomNumber(pid: String, key: String, n: Int?) {
+        val o = JSONObject(sp.getString("chnum_$pid", "{}"))
+        if (n == null) o.remove(key) else o.put(key, n)
+        sp.edit().putString("chnum_$pid", o.toString()).commit()
+    }
+
     /** ausgeblendete Gruppen je Playlist */
     fun hiddenGroups(pid: String): Set<String> = sp.getStringSet("hidden_$pid", emptySet())!!.toSet()
     fun setHiddenGroups(pid: String, groups: Set<String>) = sp.edit().putStringSet("hidden_$pid", groups).commit()
@@ -691,6 +708,17 @@ object Repo {
         return Loaded(p, live.ifEmpty { list!! }, epgU, maxc, ua, vod)
     }
 
+    /** eigene Sendernummern anwenden (nach dem Laden und nach Änderungen) */
+    fun applyCustomNumbers(ctx: Context) {
+        val pid = playlistId ?: return
+        val custom = Store(ctx).customNumbers(pid)
+        if (custom.isEmpty() && original.isEmpty()) return
+        val base = original.ifEmpty { channels }
+        channels = base.map { c -> custom[favKey(c)]?.let { c.copy(number = it) } ?: c }
+        byGroup = channels.groupBy { it.group }
+    }
+    private var original: List<Channel> = emptyList()
+
     suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
         val l = fetch(ctx, p, format, force, progress)
         if (playlistId != p.id) epg = emptyMap()
@@ -698,9 +726,11 @@ object Repo {
         Xtream.maxConnections = l.maxConnections
         m3uVod = l.vod
         channels = l.channels
+        original = l.channels
         groups = l.groups
         byGroup = l.byGroup
         playlistId = p.id
+        applyCustomNumbers(ctx)
         epgUrl = l.epgUrl
         others.remove(p.id)
     }

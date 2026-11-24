@@ -361,12 +361,28 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + orderedGroups(pid).filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
         val l = channelsOfRaw(g)
-        return if (store.sortByName && g != G_RECENT) l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') } else l
+        return when {
+            g == G_RECENT -> l
+            store.sortByName -> l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') }
+            else -> l.sortedBy { it.number } // nach Nummer (berücksichtigt eigene Nummern)
+        }
+    }
+
+    /** Gruppen in eigener Reihenfolge: zuerst manuell sortierte, dann nach Länder-Vorrang, dann Anbieter-Reihenfolge */
+    private fun orderedGroups(pid: String): List<String> {
+        val manual = store.groupOrder(pid).withIndex().associate { it.value to it.index }
+        val countries = store.countryOrder(pid).withIndex().associate { it.value to it.index }
+        val orig = Repo.groups.withIndex().associate { it.value to it.index }
+        return Repo.groups.sortedWith(compareBy(
+            { manual[it] ?: Int.MAX_VALUE },
+            { countries[Countries.code(it)] ?: Int.MAX_VALUE },
+            { orig[it] ?: 0 }
+        ))
     }
 
     private fun channelsOfRaw(g: String): List<Channel> {
@@ -451,11 +467,13 @@ class PlayerActivity : Activity() {
                 "Abspielen",
                 "☑ Mehrere Sender markieren …",
                 if (Recorder.active && Recorder.channelUrl == c.url) "■ Aufnahme beenden" else "● Aufnehmen",
+                "# Sendernummer ändern (${c.number})",
                 *(if (viewingGroup == G_RECENT) arrayOf("✕ Aus Verlauf entfernen", "🗑 Ganzen Verlauf löschen") else emptyArray())
             )) { _, w ->
                 when (w) {
-                    5 -> { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
-                    6 -> confirmClearRecents()
+                    5 -> changeNumber(c)
+                    6 -> { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
+                    7 -> confirmClearRecents()
                     4 -> if (Recorder.active && Recorder.channelUrl == c.url) stopRecording() else {
                         if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
                         hideOverlay(); ui.postDelayed({ startRecording() }, 300)
@@ -493,6 +511,33 @@ class PlayerActivity : Activity() {
                 hideOverlay()
                 load(false)
             }.show()
+    }
+
+    private fun changeNumber(c: Channel) {
+        val pid = playlist?.id ?: return
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "neue Nummer (leer = Original)"
+            setText(c.number.toString()); selectAll()
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Nummer für „${c.name}“")
+            .setView(input)
+            .setPositiveButton("Speichern") { _, _ ->
+                val n = input.text.toString().trim().toIntOrNull()
+                store.setCustomNumber(pid, favKey(c), n)
+                Repo.applyCustomNumbers(this)
+                current = Repo.channels.firstOrNull { it.url == current?.url } ?: current
+                channelAdapter.items = channelsOf(viewingGroup)
+                toast(if (n != null) "${c.name} hat jetzt Nummer $n" else "Originalnummer wiederhergestellt")
+                Repo.channels.firstOrNull { it.url == c.url }?.let { nc -> focusChannel(channelAdapter.indexOf(nc.url)) }
+            }
+            .setNeutralButton("Original") { _, _ ->
+                store.setCustomNumber(pid, favKey(c), null)
+                Repo.applyCustomNumbers(this)
+                channelAdapter.items = channelsOf(viewingGroup)
+            }
+            .setNegativeButton("Abbrechen", null).show()
     }
 
     private fun confirmClearRecents() {
@@ -857,6 +902,8 @@ class PlayerActivity : Activity() {
                 "Nach Ländern auswählen",
                 "Gruppen einzeln ein-/ausblenden",
                 "Alle Gruppen einblenden",
+                "↕ Reihenfolge der Gruppen ändern",
+                "🌍 Länder nach vorne (z. B. Deutschland, Portugal zuerst)",
                 "🎬 Filme: Länder / Kategorien ausblenden",
                 "📺 Serien: Länder / Kategorien ausblenden"
             )) { _, w ->
@@ -864,10 +911,61 @@ class PlayerActivity : Activity() {
                     0 -> chooseCountries(pid)
                     1 -> chooseGroups(pid)
                     2 -> { store.setHiddenGroups(pid, emptySet()); applyGroupChange("Alle Gruppen eingeblendet") }
-                    3 -> manageVodCats(false)
-                    4 -> manageVodCats(true)
+                    3 -> orderGroups(pid, null)
+                    4 -> orderCountries(pid)
+                    5 -> manageVodCats(false)
+                    6 -> manageVodCats(true)
                 }
             }.show()
+    }
+
+    /** Gruppe auswählen und verschieben; das Fenster öffnet sich danach wieder an derselben Stelle */
+    private fun orderGroups(pid: String, keep: String?) {
+        val groups = orderedGroups(pid).filter { it !in store.hiddenGroups(pid) }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Reihenfolge: Gruppe wählen")
+            .setItems(groups.mapIndexed { i, g -> "${i + 1}.  $g" }.toTypedArray()) { _, w ->
+                val g = groups[w]
+                AlertDialog.Builder(this).setTitle(g)
+                    .setItems(arrayOf("⤒ Ganz nach oben", "↑ Eine nach oben", "↓ Eine nach unten", "⤓ Ganz nach unten")) { _, a ->
+                        val l = groups.toMutableList()
+                        val i = l.indexOf(g); l.removeAt(i)
+                        val ni = when (a) { 0 -> 0; 1 -> (i - 1).coerceAtLeast(0); 2 -> (i + 1).coerceAtMost(l.size); else -> l.size }
+                        l.add(ni, g)
+                        store.setGroupOrder(pid, l)
+                        applyGroupChange("„$g“ verschoben")
+                        orderGroups(pid, g)
+                    }.show()
+            }
+            .setNeutralButton("Zurücksetzen") { _, _ -> store.setGroupOrder(pid, emptyList()); applyGroupChange("Reihenfolge zurückgesetzt") }
+            .setNegativeButton("Fertig", null)
+            .create()
+        dlg.show()
+        keep?.let { k -> val i = groups.indexOf(k); if (i >= 0) dlg.listView.post { dlg.listView.setSelection(i) } }
+    }
+
+    /** Länder antippen in der gewünschten Reihenfolge; deren Gruppen stehen dann oben */
+    private fun orderCountries(pid: String) {
+        val byCountry = Repo.groups.groupBy { Countries.code(it) }
+        val chosen = store.countryOrder(pid)
+        val codes = byCountry.keys.filter { it != "?" }.sortedWith(compareBy({ c -> chosen.indexOf(c).let { if (it < 0) Int.MAX_VALUE else it } }, { -(byCountry[it]?.size ?: 0) }))
+        val labels = codes.map { c ->
+            val pos = chosen.indexOf(c)
+            (if (pos >= 0) "${pos + 1}.  " else "     ") + Countries.label(c) + "  ·  ${byCountry[c]?.size} Gruppen"
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (chosen.isEmpty()) "Land antippen → kommt nach vorne" else "Reihenfolge: " + chosen.joinToString(", "))
+            .setItems(labels.toTypedArray()) { _, w ->
+                val c = codes[w]
+                val l = chosen.toMutableList()
+                if (c in l) l.remove(c) else l.add(c) // nochmal antippen = wieder entfernen
+                store.setCountryOrder(pid, l)
+                applyGroupChange(if (c in l) "${Countries.label(c)} an Position ${l.indexOf(c) + 1}" else "${Countries.label(c)} entfernt")
+                orderCountries(pid)
+            }
+            .setNeutralButton("Zurücksetzen") { _, _ -> store.setCountryOrder(pid, emptyList()); applyGroupChange("Länder-Reihenfolge zurückgesetzt") }
+            .setNegativeButton("Fertig", null)
+            .show()
     }
 
     /** Kategorien/Länder bei Filmen bzw. Serien ausblenden – direkt aus dem Menü */

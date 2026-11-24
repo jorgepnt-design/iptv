@@ -1,6 +1,6 @@
 {
-  "versionCode": 45,
-  "versionName": "2.33",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=45",
-  "notes": "• Neue Info-Leiste beim Umschalten (großes Logo, Jetzt/Danach, Restzeit, Datum)\n• Automatische Sicherung jede Woche (Playlists → Übertragen → Automatische Sicherungen)"
+  "versionCode": 46,
+  "versionName": "2.34",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=46",
+  "notes": "• Neues Design: dunkles Farbschema, eigene abgerundete Fenster, einheitliche Markierung\n• Gruppen-Reihenfolge ändern und Länder nach vorne holen (Menü → Gruppen / Länder)\n• Eigene Sendernummern (OK lang auf Sender → Sendernummer ändern)\n• Sortierung „Nummer“ berücksichtigt eigene Nummern"
 }

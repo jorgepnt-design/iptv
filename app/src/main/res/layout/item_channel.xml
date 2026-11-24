@@ -13,7 +13,7 @@
         android:id="@+id/number"
         android:layout_width="44dp"
         android:layout_height="wrap_content"
-        android:textColor="#B3FFFFFF"
+        android:textColor="@color/text2"
         android:textSize="15sp" />
 
     <ImageView
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#FFF"
+            android:textColor="@color/text"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -45,7 +45,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#B3FFFFFF"
+            android:textColor="@color/text2"
             android:textSize="14sp" />
 
         <ProgressBar

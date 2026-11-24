@@ -22,7 +22,7 @@
         android:background="#CC000000"
         android:gravity="center"
         android:padding="20dp"
-        android:textColor="#FFF"
+        android:textColor="@color/text"
         android:textSize="20sp"
         android:visibility="gone" />
 
@@ -40,7 +40,7 @@
             android:id="@+id/loadTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#FFF"
+            android:textColor="@color/text"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -49,7 +49,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:textColor="#D9FFFFFF"
+            android:textColor="@color/text2"
             android:textSize="16sp" />
 
         <ProgressBar
@@ -67,7 +67,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:gravity="end"
-            android:textColor="#3D7BFF"
+            android:textColor="@color/accent"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -89,7 +89,7 @@
         android:background="@drawable/label_bg"
         android:paddingHorizontal="14dp"
         android:paddingVertical="8dp"
-        android:textColor="#FFF"
+        android:textColor="@color/text"
         android:textSize="14sp"
         android:visibility="gone" />
 
@@ -99,7 +99,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_margin="16dp"
-        android:textColor="#80FFFFFF"
+        android:textColor="@color/text3"
         android:textSize="13sp"
         android:visibility="gone" />
 
@@ -127,7 +127,7 @@
         android:background="#CC000000"
         android:paddingHorizontal="24dp"
         android:paddingVertical="8dp"
-        android:textColor="#FFF"
+        android:textColor="@color/text"
         android:textSize="48sp"
         android:textStyle="bold"
         android:visibility="gone" />
@@ -301,7 +301,7 @@
             android:id="@+id/menuPane"
             android:layout_width="250dp"
             android:layout_height="match_parent"
-            android:background="#E6000000"
+            android:background="@color/surface"
             android:orientation="vertical"
             android:paddingHorizontal="8dp"
             android:visibility="gone">
@@ -312,7 +312,7 @@
                 android:layout_height="wrap_content"
                 android:padding="12dp"
                 android:text="@string/app_name"
-                android:textColor="#3D7BFF"
+                android:textColor="@color/accent"
                 android:textSize="22sp"
                 android:textStyle="bold" />
 
@@ -350,7 +350,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:textColor="#80FFFFFF"
+                android:textColor="@color/text3"
                 android:textSize="13sp" />
 
             <TextView
@@ -358,7 +358,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:textColor="#FFF"
+                android:textColor="@color/text"
                 android:textSize="22sp" />
 
             <View
@@ -372,7 +372,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:textColor="#3D7BFF"
+                android:textColor="@color/accent"
                 android:textSize="16sp" />
 
             <TextView
@@ -380,7 +380,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:textColor="#FFF"
+                android:textColor="@color/text"
                 android:textSize="22sp"
                 android:textStyle="bold" />
 
@@ -388,7 +388,7 @@
                 android:id="@+id/detailTime"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#B3FFFFFF"
+                android:textColor="@color/text2"
                 android:textSize="15sp" />
 
             <TextView
@@ -398,7 +398,7 @@
                 android:layout_marginTop="10dp"
                 android:ellipsize="end"
                 android:maxLines="5"
-                android:textColor="#D9FFFFFF"
+                android:textColor="@color/text2"
                 android:textSize="15sp" />
 
             <TextView
@@ -406,7 +406,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:textColor="#99FFFFFF"
+                android:textColor="@color/text3"
                 android:textSize="15sp" />
 
             <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
@@ -416,7 +416,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="OK: Vorschau · nochmal OK: Vollbild · OK lang: Favoriten / Multi-View · ← Menü"
-                android:textColor="#80FFFFFF"
+                android:textColor="@color/text3"
                 android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>
