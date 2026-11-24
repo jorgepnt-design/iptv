@@ -26,13 +26,15 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 object Players {
-    fun create(ctx: Context): ExoPlayer {
+    fun create(ctx: Context, ua: () -> String = { Http.UA }): ExoPlayer {
         // Kennung wird bei jedem Stream neu gelesen (passend zur Playlist)
         val http = androidx.media3.datasource.DataSource.Factory {
             DefaultHttpDataSource.Factory()
-                .setUserAgent(Http.UA)
+                .setUserAgent(ua())
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(20000)
@@ -59,6 +61,8 @@ class MultiViewActivity : Activity() {
     companion object {
         /** bleibt erhalten, solange die App läuft */
         val tiles = arrayOfNulls<String>(4)
+        /** Quelle je Fenster (null = aktive Playlist) */
+        val sources = arrayOfNulls<Repo.Loaded>(4)
         var four = true
     }
 
@@ -83,6 +87,8 @@ class MultiViewActivity : Activity() {
         var player: ExoPlayer? = null
         var channel: Channel? = null
         var errors = 0
+        var src: Repo.Loaded? = null
+        private val isOther get() = src != null && src?.playlist?.id != Repo.playlistId
 
         init {
             frame.setBackgroundColor(Color.BLACK)
@@ -98,9 +104,11 @@ class MultiViewActivity : Activity() {
             frame.setOnLongClickListener { sel = index; highlight(); tileMenu(); true }
         }
 
-        fun set(c: Channel?) {
+        fun set(c: Channel?, source: Repo.Loaded? = src) {
             channel = c
+            src = if (c == null) null else source
             tiles[index] = c?.url
+            sources[index] = src
             if (c == null) {
                 player?.release(); player = null; view.player = null
                 label.visibility = View.GONE; hint.visibility = View.VISIBLE
@@ -110,9 +118,9 @@ class MultiViewActivity : Activity() {
             hint.text = "＋\nOK drücken, um einen Sender zu wählen"
             errors = 0
             val (cur, _) = Repo.nowNext(c)
-            label.text = "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
+            label.text = (if (isOther) "[${src?.playlist?.name}]  " else "") + "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
             label.visibility = View.VISIBLE
-            val p = player ?: Players.create(this@MultiViewActivity).also { np ->
+            val p = player ?: Players.create(this@MultiViewActivity) { src?.ua ?: Http.UA }.also { np ->
                 player = np
                 view.player = np
                 np.addListener(object : Player.Listener {
@@ -126,7 +134,8 @@ class MultiViewActivity : Activity() {
                             view.postDelayed({ if (player === np && channel != null) { np.prepare(); np.play() } }, 3000)
                         } else {
                             label.text = "${channel?.name ?: ""}  ·  kein Bild"
-                            hint.text = "Sender lädt nicht.\nOft erlaubt der Anbieter nur ${if (Xtream.maxConnections > 0) "${Xtream.maxConnections} Verbindung(en)" else "wenige Verbindungen"} gleichzeitig.\nOK: anderen Sender wählen"
+                            val m = src?.maxConnections ?: Xtream.maxConnections
+                            hint.text = "Sender lädt nicht.\nOft erlaubt der Anbieter nur ${if (m > 0) "$m Verbindung(en)" else "wenige Verbindungen"} gleichzeitig.\nTipp: Sender aus einer anderen Playlist wählen.\nOK: anderen Sender wählen"
                             hint.visibility = View.VISIBLE
                         }
                     }
@@ -175,10 +184,14 @@ class MultiViewActivity : Activity() {
         setContentView(root)
 
         // aktueller Sender aus dem Hauptbild ins erste freie Fenster
-        intent.getStringExtra("url")?.let { u -> if (u !in tiles) { val i = tiles.indexOfFirst { it == null }; if (i >= 0) tiles[i] = u } }
+        intent.getStringExtra("url")?.let { u -> if (u !in tiles) { val i = tiles.indexOfFirst { it == null }; if (i >= 0) { tiles[i] = u; sources[i] = null } } }
         applyLayout()
         val byUrl = Repo.channels.associateBy { it.url }
-        for (i in 0 until 4) list[i].channel = tiles[i]?.let { byUrl[it] }
+        for (i in 0 until 4) {
+            val other = sources[i]?.takeIf { it.playlist.id != Repo.playlistId }
+            list[i].src = other ?: Repo.current()
+            list[i].channel = tiles[i]?.let { u -> other?.channels?.firstOrNull { it.url == u } ?: byUrl[u] }
+        }
         sel = tiles.indexOfFirst { it == intent.getStringExtra("url") }.coerceAtLeast(0)
         highlight()
     }
@@ -255,7 +268,8 @@ class MultiViewActivity : Activity() {
 
     private fun zapTile(step: Int) {
         val c = list[sel].channel ?: return
-        val l = Repo.byGroup[c.group] ?: Repo.channels
+        val src = list[sel].src ?: Repo.current() ?: return
+        val l = src.byGroup[c.group] ?: src.channels
         val i = l.indexOf(c)
         list[sel].set(l[((i + step) % l.size + l.size) % l.size])
     }
@@ -267,52 +281,99 @@ class MultiViewActivity : Activity() {
             .setItems(arrayOf("Sender wechseln", "Im Vollbild ansehen", "Fenster leeren", if (four) "Auf 2 Fenster umschalten" else "Auf 4 Fenster umschalten")) { _, w ->
                 when (w) {
                     0 -> pickGroup()
-                    1 -> { setResult(RESULT_OK, Intent().putExtra("url", c.url)); finish() }
+                    1 -> {
+                        setResult(RESULT_OK, Intent().putExtra("url", c.url).putExtra("pid", list[sel].src?.playlist?.id ?: Repo.playlistId))
+                        finish()
+                    }
                     2 -> list[sel].set(null)
                     3 -> toggleLayout()
                 }
             }.show()
     }
 
-    private fun pickGroup() {
-        if (Repo.channels.isEmpty()) { toast("Keine Kanäle geladen"); return }
-        val max = Xtream.maxConnections
-        val active = list.take(count()).count { it.channel != null && it.index != sel }
-        if (max in 1..active) {
-            AlertDialog.Builder(this)
-                .setTitle("Verbindungs-Limit")
-                .setMessage("Dein Anbieter erlaubt nur $max gleichzeitige Verbindung${if (max == 1) "" else "en"}. " +
-                    "Es laufen schon $active Sender. Ein weiterer Sender wird wahrscheinlich nicht laden " +
-                    "oder einen anderen abbrechen.\n\nFür Multi-View brauchst du ein Abo mit mehr Verbindungen.")
-                .setPositiveButton("Trotzdem versuchen") { _, _ -> pickGroupNow() }
-                .setNegativeButton("Abbrechen", null)
-                .show()
-            return
-        }
-        pickGroupNow()
+    private val scope = kotlinx.coroutines.MainScope()
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
     }
 
-    private fun pickGroupNow() {
-        val pid = Repo.playlistId ?: return
+    /** Schritt 1: Playlist wählen (nur wenn mehrere vorhanden) */
+    private fun pickGroup() {
         val store = Store(this)
-        val favs = store.favorites()
-        val favList = Repo.channels.filter { favKey(it) in favs }.distinctBy { favKey(it) }
-        val hidden = store.hiddenGroups(pid)
-        val groups = ArrayList<Pair<String, List<Channel>>>()
-        if (favList.isNotEmpty()) groups.add(PlayerActivity.G_FAV to favList)
-        groups.add(PlayerActivity.G_ALL to Repo.channels.filter { it.group !in hidden })
-        Repo.groups.filter { it !in hidden }.forEach { g -> groups.add(g to (Repo.byGroup[g] ?: emptyList())) }
+        val pls = store.playlists()
+        if (pls.size <= 1) { Repo.current()?.let { checkLimit(it) } ?: toast("Keine Kanäle geladen"); return }
+        val labels = pls.map { p ->
+            val used = list.take(count()).count { t -> t.channel != null && (t.src?.playlist?.id ?: Repo.playlistId) == p.id }
+            (if (p.id == Repo.playlistId) "● " else "") + p.name + (if (used > 0) "   ($used im Bild)" else "")
+        }
         AlertDialog.Builder(this)
-            .setTitle("Gruppe wählen")
-            .setItems(groups.map { "${it.first}  (${it.second.size})" }.toTypedArray()) { _, w -> pickChannel(groups[w].second) }
+            .setTitle("Aus welcher Playlist?")
+            .setItems(labels.toTypedArray()) { _, w -> loadPlaylist(pls[w]) }
             .show()
     }
 
-    private fun pickChannel(l: List<Channel>) {
+    private fun loadPlaylist(p: Playlist) {
+        if (p.id == Repo.playlistId) { Repo.current()?.let { checkLimit(it) }; return }
+        val dlg = AlertDialog.Builder(this).setTitle("„${p.name}“ wird geladen").setMessage("Starte …").setCancelable(true).create()
+        dlg.show()
+        val job = scope.launch {
+            try {
+                val l = Repo.forMultiView(this@MultiViewActivity, p, Store(this@MultiViewActivity).streamFormat) { step, pct ->
+                    runOnUiThread { dlg.setMessage(if (pct >= 0) "$step\n$pct %" else step) }
+                }
+                dlg.dismiss()
+                checkLimit(l)
+            } catch (e: Exception) {
+                dlg.dismiss()
+                if (e !is kotlinx.coroutines.CancellationException)
+                    AlertDialog.Builder(this@MultiViewActivity).setTitle("Laden fehlgeschlagen").setMessage(e.message).setPositiveButton("OK", null).show()
+            }
+        }
+        dlg.setOnCancelListener { job.cancel() }
+    }
+
+    /** Schritt 2: Verbindungs-Limit dieser Playlist prüfen */
+    private fun checkLimit(src: Repo.Loaded) {
+        val max = src.maxConnections
+        val active = list.take(count()).count { it.channel != null && it.index != sel && (it.src?.playlist?.id ?: Repo.playlistId) == src.playlist.id }
+        if (max in 1..active) {
+            AlertDialog.Builder(this)
+                .setTitle("Verbindungs-Limit")
+                .setMessage("Diese Playlist erlaubt nur $max gleichzeitige Verbindung${if (max == 1) "" else "en"}, " +
+                    "und davon laufen schon $active. Ein weiterer Sender wird wahrscheinlich nicht laden.\n\n" +
+                    "Tipp: Wähle einen Sender aus einer anderen Playlist.")
+                .setPositiveButton("Trotzdem versuchen") { _, _ -> pickGroupOf(src) }
+                .setNegativeButton("Andere Playlist") { _, _ -> pickGroup() }
+                .show()
+            return
+        }
+        pickGroupOf(src)
+    }
+
+    /** Schritt 3: Gruppe wählen */
+    private fun pickGroupOf(src: Repo.Loaded) {
+        if (src.channels.isEmpty()) { toast("Keine Kanäle"); return }
+        val store = Store(this)
+        val favs = store.favorites()
+        val favList = src.channels.filter { favKey(it) in favs }.distinctBy { favKey(it) }
+        val hidden = store.hiddenGroups(src.playlist.id)
+        val groups = ArrayList<Pair<String, List<Channel>>>()
+        if (favList.isNotEmpty()) groups.add(PlayerActivity.G_FAV to favList)
+        groups.add(PlayerActivity.G_ALL to src.channels.filter { it.group !in hidden })
+        src.groups.filter { it !in hidden }.forEach { g -> groups.add(g to (src.byGroup[g] ?: emptyList())) }
+        AlertDialog.Builder(this)
+            .setTitle("Gruppe wählen")
+            .setItems(groups.map { "${it.first}  (${it.second.size})" }.toTypedArray()) { _, w -> pickChannel(src, groups[w].second) }
+            .show()
+    }
+
+    /** Schritt 4: Sender wählen */
+    private fun pickChannel(src: Repo.Loaded, l: List<Channel>) {
         AlertDialog.Builder(this)
             .setTitle("Sender wählen")
             .setItems(l.map { c -> "${c.number}  ${c.name}" + (Repo.nowNext(c).first?.let { "  –  ${it.title}" } ?: "") }.toTypedArray()) { _, w ->
-                list[sel].set(l[w])
+                list[sel].set(l[w], src)
                 highlight()
             }.show()
     }

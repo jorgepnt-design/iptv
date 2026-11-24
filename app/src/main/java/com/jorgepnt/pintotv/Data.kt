@@ -198,6 +198,9 @@ object Http {
     )
 
     @Volatile var UA: String = CANDIDATES[0]
+    /** Kennung für den aktuellen Lade-Thread (für Playlists, die nicht aktiv sind) */
+    val threadUA = ThreadLocal<String?>()
+    private fun ua() = threadUA.get() ?: UA
 
     /** onBytes(gelesen, gesamt) – gesamt ist −1, wenn der Server keine Größe nennt */
     fun open(url: String, onBytes: ((Long, Long) -> Unit)? = null): InputStream {
@@ -208,7 +211,7 @@ object Http {
             c.instanceFollowRedirects = false
             c.connectTimeout = 15000
             c.readTimeout = 90000
-            c.setRequestProperty("User-Agent", UA)
+            c.setRequestProperty("User-Agent", ua())
             c.setRequestProperty("Accept-Encoding", "gzip")
             val code = try { c.responseCode } catch (e: java.net.SocketTimeoutException) {
                 throw java.net.SocketTimeoutException("Zeitüberschreitung – der Server antwortet nicht")
@@ -356,6 +359,7 @@ object Xtream {
 
     /** erlaubte gleichzeitige Verbindungen laut Anbieter (0 = unbekannt) */
     @Volatile var maxConnections = 0
+    val lastMax = ThreadLocal<Int>()
 
     fun epgUrl(p0: Playlist): String { val p = normalize(p0); return "${base(p.server)}/xmltv.php?${auth(p)}" }
 
@@ -367,7 +371,7 @@ object Xtream {
             val info = JSONObject(Http.text("$b/player_api.php?${auth(p)}")).optJSONObject("user_info")
             if (info != null) {
                 if (info.optString("auth") == "0") throw IOException("Anmeldung fehlgeschlagen – Benutzer oder Passwort falsch")
-                maxConnections = info.optString("max_connections").toIntOrNull() ?: 0
+                lastMax.set(info.optString("max_connections").toIntOrNull() ?: 0)
             }
         } catch (e: org.json.JSONException) { }
         val catsTxt = Http.text("$b/player_api.php?${auth(p)}&action=get_live_categories")
@@ -523,16 +527,28 @@ object Repo {
 
     private const val MAX_AGE = 12 * 3600_000L
 
-    suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
+    class Loaded(val playlist: Playlist, val channels: List<Channel>, val epgUrl: String, val maxConnections: Int, val ua: String) {
+        val groups: List<String> by lazy { channels.map { it.group }.distinct() }
+        val byGroup: Map<String, List<Channel>> by lazy { channels.groupBy { it.group } }
+    }
+
+    /** weitere geladene Playlists (für Multi-View) */
+    private val others = HashMap<String, Loaded>()
+
+    /** Senderliste einer Playlist holen, ohne die aktive Playlist zu verändern */
+    fun fetch(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress?): Loaded {
         val f = File(ctx.filesDir, "ch_${p.id}.json")
+        val store = Store(ctx)
+        var ua = store.userAgent(p.id) ?: Http.CANDIDATES[0]
         var list: List<Channel>? = null
         var detectedEpg = ""
+        var maxc = 0
         if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < MAX_AGE) {
             try {
                 progress?.invoke("Gespeicherte Senderliste wird geladen …", -1)
                 val o = JSONObject(f.readText())
                 detectedEpg = o.optString("epg")
-                Xtream.maxConnections = o.optInt("maxc", 0)
+                maxc = o.optInt("maxc", 0)
                 val a = o.getJSONArray("ch")
                 list = (0 until a.length()).map {
                     val c = a.getJSONArray(it)
@@ -541,52 +557,76 @@ object Repo {
                 }
             } catch (e: Exception) { list = null }
         }
-        val store = Store(ctx)
-        Http.UA = store.userAgent(p.id) ?: Http.CANDIDATES[0]
         if (list == null) {
-            Xtream.maxConnections = 0
             val fixed = store.userAgentFixed(p.id)
-            val tries = if (fixed) listOf(Http.UA) else (listOf(Http.UA) + Http.CANDIDATES).distinct()
+            val tries = if (fixed) listOf(ua) else (listOf(ua) + Http.CANDIDATES).distinct()
             var lastError: Exception? = null
-            for (ua in tries) {
-                Http.UA = ua
-                if (ua != tries.first()) progress?.invoke("Server lehnt ab – versuche andere Player-Kennung …", -1)
-                try {
-                    if (p.type == "xtream") {
-                        list = Xtream.load(p, format, progress)
-                    } else {
-                        progress?.invoke("Verbinde mit Server …", -1)
-                        val r = Http.open(p.url, Http.bytesTo("Playlist wird geladen …", progress)).use { M3uParser.parse(it) }
-                        list = r.channels
-                        detectedEpg = r.epgUrl ?: ""
+            try {
+                for (t in tries) {
+                    Http.threadUA.set(t)
+                    Xtream.lastMax.set(0)
+                    if (t != tries.first()) progress?.invoke("Server lehnt ab – versuche andere Player-Kennung …", -1)
+                    try {
+                        if (p.type == "xtream") {
+                            list = Xtream.load(p, format, progress)
+                            maxc = Xtream.lastMax.get() ?: 0
+                        } else {
+                            progress?.invoke("Verbinde mit Server …", -1)
+                            val r = Http.open(p.url, Http.bytesTo("Playlist wird geladen …", progress)).use { M3uParser.parse(it) }
+                            list = r.channels
+                            detectedEpg = r.epgUrl ?: ""
+                        }
+                        ua = t
+                        store.setUserAgent(p.id, t)
+                        break
+                    } catch (e: HttpStatusException) {
+                        lastError = e // anderer Kennung eine Chance geben
+                    } catch (e: java.net.SocketTimeoutException) {
+                        // manche Anbieter lassen unbekannte Apps ins Leere laufen
+                        lastError = java.net.SocketTimeoutException("Zeitüberschreitung – der Server antwortet nicht")
+                    } catch (e: Exception) {
+                        // Anmeldefehler können bei manchen Anbietern auch an der Kennung liegen
+                        lastError = e
+                        if (e !is IOException || e.message?.startsWith("Anmeldung") != true) throw e
                     }
-                    store.setUserAgent(p.id, ua)
-                    break
-                } catch (e: HttpStatusException) {
-                    lastError = e // anderer Kennung eine Chance geben
-                } catch (e: java.net.SocketTimeoutException) {
-                    // manche Anbieter lassen unbekannte Apps ins Leere laufen
-                    lastError = java.net.SocketTimeoutException("Zeitüberschreitung – der Server antwortet nicht")
-                } catch (e: Exception) {
-                    // Anmeldefehler können bei manchen Anbietern auch an der Kennung liegen
-                    lastError = e
-                    if (e !is IOException || e.message?.startsWith("Anmeldung") != true) throw e
                 }
+            } finally {
+                Http.threadUA.set(null)
             }
-            if (list == null) throw lastError ?: IOException("Unbekannter Fehler")
-            progress?.invoke("${list.size} Sender werden gespeichert …", 100)
+            val l = list ?: throw lastError ?: IOException("Unbekannter Fehler")
+            progress?.invoke("${l.size} Sender werden gespeichert …", 100)
             val a = JSONArray()
-            list.forEach { c -> a.put(JSONArray().put(c.name).put(c.url).put(c.logo ?: "").put(c.group).put(c.epgId ?: "").put(c.number)) }
-            f.writeText(JSONObject().put("epg", detectedEpg).put("maxc", Xtream.maxConnections).put("ch", a).toString())
+            l.forEach { c -> a.put(JSONArray().put(c.name).put(c.url).put(c.logo ?: "").put(c.group).put(c.epgId ?: "").put(c.number)) }
+            f.writeText(JSONObject().put("epg", detectedEpg).put("maxc", maxc).put("ch", a).toString())
         }
-        val g = LinkedHashMap<String, MutableList<Channel>>()
-        list.forEach { g.getOrPut(it.group) { mutableListOf() }.add(it) }
+        val epgU = p.epgUrl.ifBlank { if (p.type == "xtream") Xtream.epgUrl(p) else detectedEpg }
+        return Loaded(p, list!!, epgU, maxc, ua)
+    }
+
+    suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
+        val l = fetch(ctx, p, format, force, progress)
         if (playlistId != p.id) epg = emptyMap()
-        channels = list
-        groups = g.keys.toList()
-        byGroup = g
+        Http.UA = l.ua
+        Xtream.maxConnections = l.maxConnections
+        channels = l.channels
+        groups = l.groups
+        byGroup = l.byGroup
         playlistId = p.id
-        epgUrl = p.epgUrl.ifBlank { if (p.type == "xtream") Xtream.epgUrl(p) else detectedEpg }
+        epgUrl = l.epgUrl
+        others.remove(p.id)
+    }
+
+    /** aktive Playlist als Loaded */
+    fun current(): Loaded? {
+        val pid = playlistId ?: return null
+        return Loaded(Playlist(pid, "", "", "", "", "", "", ""), channels, epgUrl, Xtream.maxConnections, Http.UA)
+    }
+
+    /** beliebige Playlist für Multi-View laden (aktive direkt, andere aus Speicher/Netz) */
+    suspend fun forMultiView(ctx: Context, p: Playlist, format: String, progress: Progress?): Loaded = withContext(Dispatchers.IO) {
+        if (p.id == playlistId) return@withContext current()!!
+        others[p.id]?.let { return@withContext it }
+        fetch(ctx, p, format, false, progress).also { others[p.id] = it }
     }
 
     suspend fun loadEpg(ctx: Context, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {

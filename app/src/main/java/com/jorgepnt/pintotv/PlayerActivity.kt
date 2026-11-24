@@ -145,6 +145,14 @@ class PlayerActivity : Activity() {
             }
             REQ_GUIDE, REQ_MULTI -> {
                 val url = data?.getStringExtra("url") ?: return
+                val pid = data.getStringExtra("pid")
+                if (pid != null && pid != playlist?.id) {
+                    // Sender aus einer anderen Playlist im Vollbild: Playlist wechseln
+                    store.setLastUrl(pid, url)
+                    store.activeId = pid
+                    load(false)
+                    return
+                }
                 val ch = Repo.channels.firstOrNull { it.url == url } ?: return
                 playingGroup = viewingGroup
                 play(ch, channelsOf(viewingGroup))
@@ -388,10 +396,12 @@ class PlayerActivity : Activity() {
                     }
                     1 -> {
                         val tiles = MultiViewActivity.tiles
+                        val srcs = MultiViewActivity.sources
                         if (c.url !in tiles) {
-                            current?.url?.let { u -> if (u !in tiles) tiles.indexOfFirst { it == null }.takeIf { it >= 0 }?.let { tiles[it] = u } }
+                            current?.url?.let { u -> if (u !in tiles) tiles.indexOfFirst { it == null }.takeIf { it >= 0 }?.let { tiles[it] = u; srcs[it] = null } }
                             val free = tiles.indexOfFirst { it == null }
-                            tiles[if (free >= 0) free else 3] = c.url
+                            val i = if (free >= 0) free else 3
+                            tiles[i] = c.url; srcs[i] = null
                         }
                         openMulti()
                     }
