@@ -1,6 +1,6 @@
 {
-  "versionCode": 43,
-  "versionName": "2.31",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=43",
-  "notes": "• Menü: Eintrag „Version beim Aufnehmen fragen“ entfernt, Menüspalte breiter"
+  "versionCode": 44,
+  "versionName": "2.32",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=44",
+  "notes": "• Stream-Format: Auswahlfenster mit Erklärung (TS empfohlen) statt Umschalter"
 }

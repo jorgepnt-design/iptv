@@ -1123,13 +1123,7 @@ class PlayerActivity : Activity() {
             item == "Gruppen / Länder" -> manageGroups()
             item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
             item == "Aktualisieren" -> { hideOverlay(); load(true) }
-            item.startsWith("Stream-Format") -> {
-                store.streamFormat = if (store.streamFormat == "ts") "m3u8" else "ts"
-                menuAdapter.items = menuItems.map { TextItem(it) }
-                focusAt(menuList, i)
-                if (playlist?.type == "xtream") { hideOverlay(); load(true) }
-                else toast("Gilt nur für Xtream-Codes-Playlists")
-            }
+            item.startsWith("Stream-Format") -> chooseStreamFormat(i)
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
             item == "● Aufnahme starten" -> { hideOverlay(); ui.postDelayed({ startRecording() }, 300) }
             item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
@@ -1143,6 +1137,33 @@ class PlayerActivity : Activity() {
             }
             item == "Beenden" -> finish()
         }
+    }
+
+    private fun chooseStreamFormat(menuPos: Int) {
+        val opts = arrayOf(
+            "TS – durchgehender Stream (empfohlen)\nschnelles Umschalten, nah am Live-Bild, einfache Aufnahme",
+            "HLS – Stream in kleinen Stücken\nrobuster bei wackeligem Internet, einige Sekunden Verzögerung"
+        )
+        val cur = if (store.streamFormat == "ts") 0 else 1
+        AlertDialog.Builder(this)
+            .setTitle("Stream-Format (nur Xtream-Playlists)")
+            .setSingleChoiceItems(opts, cur) { d, w ->
+                d.dismiss()
+                val f = if (w == 0) "ts" else "m3u8"
+                if (f == store.streamFormat) return@setSingleChoiceItems
+                if (Recorder.active) stopRecording()
+                store.streamFormat = f
+                menuAdapter.items = menuItems.map { TextItem(it) }
+                if (playlist?.type == "xtream") {
+                    toast("Stream-Format: ${if (w == 0) "TS" else "HLS"} – Senderliste wird neu geladen")
+                    hideOverlay(); load(true)
+                } else {
+                    toast("Gilt nur für Xtream-Playlists – bei M3U bestimmt der Anbieter das Format")
+                    focusAt(menuList, menuPos)
+                }
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
     }
 
     private fun openMulti() {
