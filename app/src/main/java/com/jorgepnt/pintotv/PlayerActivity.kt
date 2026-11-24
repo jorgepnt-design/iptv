@@ -355,7 +355,7 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = listOf(G_MENU, G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
@@ -824,7 +824,7 @@ class PlayerActivity : Activity() {
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
 
-    private val specialGroups = setOf(G_MENU, G_SWITCH, G_MOVIES, G_SERIES)
+    private val specialGroups = setOf(G_SWITCH, G_MOVIES, G_SERIES)
     private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(specialGroups.size))
 
     private fun openVod(series: Boolean) {
