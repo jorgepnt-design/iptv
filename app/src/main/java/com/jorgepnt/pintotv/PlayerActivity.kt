@@ -137,7 +137,10 @@ class PlayerActivity : Activity() {
         when (requestCode) {
             REQ_PLAYLIST -> {
                 val p = store.active()
-                if (p == null) showStatus("Keine Playlist vorhanden.\nMenü-Taste drücken → Playlists")
+                if (p == null) {
+                    player.stop(); current = null; playlist = null
+                    showStatus("Keine Playlist vorhanden.\nOK oder Menü drücken → Playlists")
+                }
                 else if (p.id != playlist?.id || resultCode == RESULT_OK) load(resultCode == RESULT_OK)
             }
             REQ_GUIDE, REQ_MULTI -> {

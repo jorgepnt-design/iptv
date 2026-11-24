@@ -27,6 +27,7 @@ class PlaylistActivity : Activity() {
     private lateinit var adapter: TextAdapter
     private lateinit var list: RecyclerView
     private var phoneServer: PhoneSetupServer? = null
+    private var marked = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +36,7 @@ class PlaylistActivity : Activity() {
         list = findViewById(R.id.plList)
         findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}"
         adapter = TextAdapter(
+            onFocus = { pos -> marked = pos; adapter.activePos = pos },
             onClick = { pos -> select(store.playlists()[pos]) },
             onLongClick = { pos -> options(store.playlists()[pos]) }
         )
@@ -42,6 +44,10 @@ class PlaylistActivity : Activity() {
         list.adapter = adapter
         findViewById<Button>(R.id.addXtream).setOnClickListener { editXtream(null) }
         findViewById<Button>(R.id.addM3u).setOnClickListener { editM3u(null) }
+        findViewById<Button>(R.id.editPl).setOnClickListener {
+            store.playlists().getOrNull(marked)?.let { p -> if (p.type == "xtream") editXtream(p) else editM3u(p) }
+        }
+        findViewById<Button>(R.id.deletePl).setOnClickListener { store.playlists().getOrNull(marked)?.let { confirmDelete(it) } }
         refresh()
         if (store.playlists().isEmpty()) findViewById<Button>(R.id.addXtream).requestFocus()
         startPhoneSetup()
@@ -93,16 +99,32 @@ class PlaylistActivity : Activity() {
             .setItems(arrayOf("Bearbeiten", "Player-Kennung wählen", "Löschen")) { _, which ->
                 if (which == 0) { if (p.type == "xtream") editXtream(p) else editM3u(p) }
                 else if (which == 1) chooseUa(p)
-                else AlertDialog.Builder(this).setTitle("„${p.name}“ löschen?")
-                    .setPositiveButton("Löschen") { _, _ ->
-                        store.savePlaylists(store.playlists().filter { it.id != p.id })
-                        File(filesDir, "ch_${p.id}.json").delete()
-                        File(filesDir, "epg_${p.id}.bin").delete()
-                        if (store.activeId == p.id) store.activeId = store.playlists().firstOrNull()?.id
-                        refresh()
-                    }
-                    .setNegativeButton("Abbrechen", null).show()
+                else confirmDelete(p)
             }.show()
+    }
+
+    private fun confirmDelete(p: Playlist) {
+        AlertDialog.Builder(this)
+            .setTitle("Playlist „${p.name}“ löschen?")
+            .setMessage(if (p.type == "xtream") "Xtream · ${p.server}" else "M3U · ${p.url}")
+            .setPositiveButton("Löschen") { _, _ ->
+                store.savePlaylists(store.playlists().filter { it.id != p.id })
+                File(filesDir, "ch_${p.id}.json").delete()
+                File(filesDir, "epg_${p.id}.bin").delete()
+                if (store.activeId == p.id) store.activeId = store.playlists().firstOrNull()?.id
+                Toast.makeText(this, "„${p.name}“ gelöscht", Toast.LENGTH_SHORT).show()
+                marked = 0
+                deletedActive = deletedActive || Repo.playlistId == p.id
+                refresh()
+            }
+            .setNegativeButton("Abbrechen", null).show()
+    }
+
+    private var deletedActive = false
+
+    override fun finish() {
+        if (deletedActive) setResult(RESULT_OK)
+        super.finish()
     }
 
     private fun chooseUa(p: Playlist) {
