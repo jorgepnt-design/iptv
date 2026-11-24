@@ -93,14 +93,30 @@ class Store(ctx: Context) {
         get() = sp.getString("lastGroup", null)
         set(v) = sp.edit().putString("lastGroup", v).apply()
 
+    fun userAgent(pid: String): String? = sp.getString("ua_$pid", null)
+    fun setUserAgent(pid: String, ua: String) = sp.edit().putString("ua_$pid", ua).apply()
+
     /** "ts" oder "m3u8" – nur für Xtream-Codes */
     var streamFormat: String
         get() = sp.getString("format", "ts")!!
         set(v) = sp.edit().putString("format", v).apply()
 }
 
+class HttpStatusException(val code: Int, val body: String) :
+    IOException("Server antwortet mit HTTP $code" + if (body.isNotBlank()) "\n„${body.take(120)}“" else "")
+
 object Http {
-    const val UA = "PintoTV/1.0 (Linux; Android)"
+    /** Kennungen, die viele Anbieter zulassen – werden der Reihe nach probiert */
+    val CANDIDATES = listOf(
+        "okhttp/4.12.0",
+        "VLC/3.0.21 LibVLC/3.0.21",
+        "Mozilla/5.0 (Linux; Android 11; SHIELD Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Lavf/60.16.100",
+        "Dalvik/2.1.0 (Linux; U; Android 11; SHIELD Android TV Build/RQ1A.210105.003)",
+        "PintoTV/1.0 (Linux; Android)"
+    )
+
+    @Volatile var UA: String = CANDIDATES[0]
 
     fun open(url: String): InputStream {
         var u = url
@@ -120,7 +136,11 @@ object Http {
                 if (++hops > 6) throw IOException("Zu viele Weiterleitungen")
                 continue
             }
-            if (code !in 200..299) throw IOException("Server antwortet mit HTTP $code")
+            if (code !in 200..299) {
+                val body = try { (c.errorStream ?: c.inputStream)?.bufferedReader()?.use { it.readText() } ?: "" } catch (e: Exception) { "" }
+                c.disconnect()
+                throw HttpStatusException(code, body.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim())
+            }
             var ins: InputStream = BufferedInputStream(c.inputStream, 65536)
             if ("gzip".equals(c.contentEncoding, true)) ins = BufferedInputStream(GZIPInputStream(ins, 65536), 65536)
             return gunzipIfNeeded(ins)
@@ -218,6 +238,18 @@ object M3uParser {
 }
 
 object Xtream {
+    /** Falls ein kompletter Link eingefügt wurde (…/get.php?username=…&password=…), Zugangsdaten herausziehen */
+    fun normalize(p: Playlist): Playlist {
+        val raw = p.server.trim()
+        if (!raw.contains("?") && !raw.contains(".php")) return p
+        return try {
+            val u = URL(if (raw.startsWith("http")) raw else "http://$raw")
+            val q = (u.query ?: "").split("&").associate { val i = it.indexOf('='); if (i > 0) it.substring(0, i) to java.net.URLDecoder.decode(it.substring(i + 1), "UTF-8") else it to "" }
+            val base = u.protocol + "://" + u.host + (if (u.port > 0) ":${u.port}" else "")
+            p.copy(server = base, user = p.user.ifBlank { q["username"] ?: "" }, pass = p.pass.ifBlank { q["password"] ?: "" })
+        } catch (e: Exception) { p }
+    }
+
     fun base(server: String): String {
         var s = server.trim().trimEnd('/')
         if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://$s"
@@ -227,9 +259,10 @@ object Xtream {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun auth(p: Playlist) = "username=${enc(p.user)}&password=${enc(p.pass)}"
 
-    fun epgUrl(p: Playlist) = "${base(p.server)}/xmltv.php?${auth(p)}"
+    fun epgUrl(p0: Playlist): String { val p = normalize(p0); return "${base(p.server)}/xmltv.php?${auth(p)}" }
 
-    fun load(p: Playlist, ext: String): List<Channel> {
+    fun load(p0: Playlist, ext: String): List<Channel> {
+        val p = normalize(p0)
         val b = base(p.server)
         val catsTxt = Http.text("$b/player_api.php?${auth(p)}&action=get_live_categories")
         val cats = try { JSONArray(catsTxt) } catch (e: Exception) {
@@ -395,14 +428,32 @@ object Repo {
                 }
             } catch (e: Exception) { list = null }
         }
+        val store = Store(ctx)
+        Http.UA = store.userAgent(p.id) ?: Http.CANDIDATES[0]
         if (list == null) {
-            if (p.type == "xtream") {
-                list = Xtream.load(p, format)
-            } else {
-                val r = Http.open(p.url).use { M3uParser.parse(it) }
-                list = r.channels
-                detectedEpg = r.epgUrl ?: ""
+            val tries = (listOf(Http.UA) + Http.CANDIDATES).distinct()
+            var lastError: Exception? = null
+            for (ua in tries) {
+                Http.UA = ua
+                try {
+                    if (p.type == "xtream") {
+                        list = Xtream.load(p, format)
+                    } else {
+                        val r = Http.open(p.url).use { M3uParser.parse(it) }
+                        list = r.channels
+                        detectedEpg = r.epgUrl ?: ""
+                    }
+                    store.setUserAgent(p.id, ua)
+                    break
+                } catch (e: HttpStatusException) {
+                    lastError = e // anderer Kennung eine Chance geben
+                } catch (e: Exception) {
+                    // Anmeldefehler können bei manchen Anbietern auch an der Kennung liegen
+                    lastError = e
+                    if (e !is IOException || e.message?.startsWith("Anmeldung") != true) throw e
+                }
             }
+            if (list == null) throw lastError ?: IOException("Unbekannter Fehler")
             val a = JSONArray()
             list.forEach { c -> a.put(JSONArray().put(c.name).put(c.url).put(c.logo ?: "").put(c.group).put(c.epgId ?: "").put(c.number)) }
             f.writeText(JSONObject().put("epg", detectedEpg).put("ch", a).toString())

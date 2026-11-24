@@ -68,3 +68,15 @@ http://srv/3
         assertEquals(listOf("heute"), m["n:" + XmlTv.norm("ZDF")]!!.map { it.title })
     }
 }
+
+class XtreamLinkTest {
+    @Test fun fullLinkInServerField() {
+        val p = Playlist("1", "x", "xtream", "", "http://abc.example.com:8080/get.php?username=jorge&password=geheim&type=m3u_plus", "", "", "")
+        val n = Xtream.normalize(p)
+        org.junit.Assert.assertEquals("http://abc.example.com:8080", n.server)
+        org.junit.Assert.assertEquals("jorge", n.user)
+        org.junit.Assert.assertEquals("geheim", n.pass)
+        val plain = Playlist("1", "x", "xtream", "", "abc.example.com:8080", "u", "p", "")
+        org.junit.Assert.assertEquals(plain, Xtream.normalize(plain))
+    }
+}

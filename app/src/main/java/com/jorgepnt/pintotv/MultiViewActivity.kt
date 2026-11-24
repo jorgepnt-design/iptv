@@ -29,11 +29,15 @@ import androidx.media3.ui.PlayerView
 
 object Players {
     fun create(ctx: Context): ExoPlayer {
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(Http.UA)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
+        // Kennung wird bei jedem Stream neu gelesen (passend zur Playlist)
+        val http = androidx.media3.datasource.DataSource.Factory {
+            DefaultHttpDataSource.Factory()
+                .setUserAgent(Http.UA)
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(20000)
+                .createDataSource()
+        }
         val extractors = DefaultExtractorsFactory().setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
         )
