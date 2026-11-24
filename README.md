@@ -10,6 +10,8 @@ Eigener IPTV-Player im Stil von TiviMate, optimiert für die Fernbedienung (Fire
 - **Favoriten** (OK lang drücken), **Zuletzt gesehen**, **Suche**, Ziffern-Direktwahl
 - Info-Leiste beim Umschalten, automatische Wiederverbindung bei Abbrüchen
 - Stream-Format für Xtream umschaltbar (TS / HLS)
+- **Einrichtung vom Handy:** Auf dem Playlist-Bildschirm steht ein QR-Code. Mit dem iPhone/Handy scannen, Xtream- oder M3U-Daten bequem eintippen, an den Fernseher senden
+- Touch-Bedienung für Android-Handys und Tablets
 
 ## Installieren
 Direkter Download der aktuellen APK:

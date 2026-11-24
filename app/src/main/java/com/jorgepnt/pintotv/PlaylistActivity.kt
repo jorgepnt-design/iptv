@@ -2,6 +2,15 @@ package com.jorgepnt.pintotv
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 import android.os.Bundle
 import android.text.InputType
 import android.widget.Button
@@ -17,6 +26,7 @@ class PlaylistActivity : Activity() {
     private lateinit var store: Store
     private lateinit var adapter: TextAdapter
     private lateinit var list: RecyclerView
+    private var phoneServer: PhoneSetupServer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +43,34 @@ class PlaylistActivity : Activity() {
         findViewById<Button>(R.id.addM3u).setOnClickListener { editM3u(null) }
         refresh()
         if (store.playlists().isEmpty()) findViewById<Button>(R.id.addXtream).requestFocus()
+        startPhoneSetup()
+    }
+
+    private fun startPhoneSetup() {
+        val pane = findViewById<View>(R.id.phonePane)
+        val ip = PhoneSetupServer.localIp()
+        val srv = PhoneSetupServer { p ->
+            runOnUiThread {
+                Toast.makeText(this, "Playlist „${p.name}“ vom Handy empfangen", Toast.LENGTH_LONG).show()
+                save(null, p)
+            }
+        }
+        if (ip == null || !srv.start()) { pane.visibility = View.GONE; return }
+        phoneServer = srv
+        val url = if (srv.port == 80) "http://$ip" else "http://$ip:${srv.port}"
+        findViewById<TextView>(R.id.phoneUrl).text = url.removePrefix("http://")
+        findViewById<ImageView>(R.id.qr).setImageBitmap(qr(url, 400))
+    }
+
+    private fun qr(text: String, size: Int): Bitmap {
+        val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 1))
+        val px = IntArray(size * size) { i -> if (m[i % size, i / size]) Color.BLACK else Color.WHITE }
+        return Bitmap.createBitmap(px, size, size, Bitmap.Config.RGB_565)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        phoneServer?.stop()
     }
 
     private fun refresh() {
