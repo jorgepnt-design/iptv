@@ -33,6 +33,7 @@ class PlaylistActivity : Activity() {
         setContentView(R.layout.activity_playlist)
         store = Store(this)
         list = findViewById(R.id.plList)
+        findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}"
         adapter = TextAdapter(
             onClick = { pos -> select(store.playlists()[pos]) },
             onLongClick = { pos -> options(store.playlists()[pos]) }
@@ -89,8 +90,9 @@ class PlaylistActivity : Activity() {
     private fun options(p: Playlist) {
         AlertDialog.Builder(this)
             .setTitle(p.name)
-            .setItems(arrayOf("Bearbeiten", "Löschen")) { _, which ->
+            .setItems(arrayOf("Bearbeiten", "Player-Kennung wählen", "Löschen")) { _, which ->
                 if (which == 0) { if (p.type == "xtream") editXtream(p) else editM3u(p) }
+                else if (which == 1) chooseUa(p)
                 else AlertDialog.Builder(this).setTitle("„${p.name}“ löschen?")
                     .setPositiveButton("Löschen") { _, _ ->
                         store.savePlaylists(store.playlists().filter { it.id != p.id })
@@ -100,6 +102,23 @@ class PlaylistActivity : Activity() {
                         refresh()
                     }
                     .setNegativeButton("Abbrechen", null).show()
+            }.show()
+    }
+
+    private fun chooseUa(p: Playlist) {
+        val names = listOf("Automatisch (empfohlen)", "okhttp (wie viele Player)", "VLC", "Browser (Chrome)", "FFmpeg / Lavf", "Android-System", "PintoTV")
+        val current = store.userAgent(p.id)
+        val sel = if (!store.userAgentFixed(p.id)) 0 else (Http.CANDIDATES.indexOf(current) + 1).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Player-Kennung für „${p.name}“")
+            .setSingleChoiceItems(names.toTypedArray(), sel) { d, w ->
+                store.setUserAgentFixed(p.id, if (w == 0) null else Http.CANDIDATES[w - 1])
+                File(filesDir, "ch_${p.id}.json").delete()
+                d.dismiss()
+                Toast.makeText(this, "Gespeichert – Playlist wird neu geladen", Toast.LENGTH_SHORT).show()
+                store.activeId = p.id
+                setResult(RESULT_OK)
+                finish()
             }.show()
     }
 

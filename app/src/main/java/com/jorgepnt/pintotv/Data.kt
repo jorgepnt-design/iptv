@@ -95,6 +95,11 @@ class Store(ctx: Context) {
 
     fun userAgent(pid: String): String? = sp.getString("ua_$pid", null)
     fun setUserAgent(pid: String, ua: String) = sp.edit().putString("ua_$pid", ua).apply()
+    fun userAgentFixed(pid: String) = sp.getBoolean("uafix_$pid", false)
+    fun setUserAgentFixed(pid: String, ua: String?) {
+        if (ua == null) sp.edit().remove("ua_$pid").putBoolean("uafix_$pid", false).apply()
+        else sp.edit().putString("ua_$pid", ua).putBoolean("uafix_$pid", true).apply()
+    }
 
     /** "ts" oder "m3u8" – nur für Xtream-Codes */
     var streamFormat: String
@@ -102,8 +107,30 @@ class Store(ctx: Context) {
         set(v) = sp.edit().putString("format", v).apply()
 }
 
+/** Fortschritt: Text + Prozent (−1 = unbestimmt) */
+typealias Progress = (String, Int) -> Unit
+
+fun mb(b: Long): String = String.format(java.util.Locale.GERMANY, "%.1f MB", b / 1048576.0)
+
+class CountingInputStream(inner: InputStream, private val total: Long, private val cb: (Long, Long) -> Unit) : FilterInputStream(inner) {
+    private var count = 0L
+    private var lastReport = 0L
+    private fun add(n: Long) {
+        if (n <= 0) return
+        count += n
+        val now = System.currentTimeMillis()
+        if (now - lastReport > 250) { lastReport = now; cb(count, total) }
+    }
+    override fun read(): Int { val r = super.read(); if (r >= 0) add(1); return r }
+    override fun read(b: ByteArray, off: Int, len: Int): Int { val r = super.read(b, off, len); add(r.toLong()); return r }
+}
+
 class HttpStatusException(val code: Int, val body: String) :
     IOException("Server antwortet mit HTTP $code" + if (body.isNotBlank()) "\n„${body.take(120)}“" else "")
+
+fun appVersion(ctx: Context): String = try {
+    "v" + ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
+} catch (e: Exception) { "" }
 
 object Http {
     /** Kennungen, die viele Anbieter zulassen – werden der Reihe nach probiert */
@@ -118,17 +145,20 @@ object Http {
 
     @Volatile var UA: String = CANDIDATES[0]
 
-    fun open(url: String): InputStream {
+    /** onBytes(gelesen, gesamt) – gesamt ist −1, wenn der Server keine Größe nennt */
+    fun open(url: String, onBytes: ((Long, Long) -> Unit)? = null): InputStream {
         var u = url
         var hops = 0
         while (true) {
             val c = URL(u).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
-            c.connectTimeout = 20000
-            c.readTimeout = 60000
+            c.connectTimeout = 15000
+            c.readTimeout = 90000
             c.setRequestProperty("User-Agent", UA)
             c.setRequestProperty("Accept-Encoding", "gzip")
-            val code = c.responseCode
+            val code = try { c.responseCode } catch (e: java.net.SocketTimeoutException) {
+                throw java.net.SocketTimeoutException("Zeitüberschreitung – der Server antwortet nicht")
+            }
             if (code in 300..399) {
                 val loc = c.getHeaderField("Location") ?: throw IOException("Weiterleitung ohne Ziel")
                 u = URL(URL(u), loc).toString()
@@ -141,7 +171,9 @@ object Http {
                 c.disconnect()
                 throw HttpStatusException(code, body.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim())
             }
-            var ins: InputStream = BufferedInputStream(c.inputStream, 65536)
+            var raw: InputStream = c.inputStream
+            if (onBytes != null) raw = CountingInputStream(raw, c.contentLengthLong, onBytes)
+            var ins: InputStream = BufferedInputStream(raw, 65536)
             if ("gzip".equals(c.contentEncoding, true)) ins = BufferedInputStream(GZIPInputStream(ins, 65536), 65536)
             return gunzipIfNeeded(ins)
         }
@@ -156,7 +188,16 @@ object Http {
         return if (x == 0x1f && y == 0x8b) BufferedInputStream(GZIPInputStream(b, 65536), 65536) else b
     }
 
-    fun text(url: String): String = open(url).bufferedReader().use { it.readText() }
+    fun text(url: String, onBytes: ((Long, Long) -> Unit)? = null): String =
+        open(url, onBytes).bufferedReader().use { it.readText() }
+
+    /** Standard-Fortschrittsanzeige für Downloads */
+    fun bytesTo(label: String, progress: Progress?): ((Long, Long) -> Unit)? = progress?.let { pr ->
+        { done: Long, total: Long ->
+            if (total > 0) pr("$label  ${mb(done)} von ${mb(total)}", ((done * 100) / total).toInt().coerceIn(0, 100))
+            else pr("$label  ${mb(done)}", -1)
+        }
+    }
 }
 
 object M3uParser {
@@ -261,9 +302,10 @@ object Xtream {
 
     fun epgUrl(p0: Playlist): String { val p = normalize(p0); return "${base(p.server)}/xmltv.php?${auth(p)}" }
 
-    fun load(p0: Playlist, ext: String): List<Channel> {
+    fun load(p0: Playlist, ext: String, progress: Progress? = null): List<Channel> {
         val p = normalize(p0)
         val b = base(p.server)
+        progress?.invoke("Anmeldung beim Server …", -1)
         val catsTxt = Http.text("$b/player_api.php?${auth(p)}&action=get_live_categories")
         val cats = try { JSONArray(catsTxt) } catch (e: Exception) {
             throw IOException("Anmeldung fehlgeschlagen – Server, Benutzer oder Passwort prüfen")
@@ -273,9 +315,14 @@ object Xtream {
             val o = cats.getJSONObject(i)
             catMap[o.optString("category_id")] = o.optString("category_name")
         }
-        val streams = JSONArray(Http.text("$b/player_api.php?${auth(p)}&action=get_live_streams"))
+        progress?.invoke("${cats.length()} Gruppen gefunden – Senderliste wird geladen …", -1)
+        val streamsTxt = Http.text("$b/player_api.php?${auth(p)}&action=get_live_streams", Http.bytesTo("Senderliste wird geladen …", progress))
+        progress?.invoke("Senderliste wird verarbeitet …", -1)
+        val streams = JSONArray(streamsTxt)
         val out = ArrayList<Channel>(streams.length())
-        for (i in 0 until streams.length()) {
+        val total = streams.length()
+        for (i in 0 until total) {
+            if (progress != null && i % 500 == 0) progress("Sender werden verarbeitet: $i von $total", i * 100 / total)
             val o = streams.getJSONObject(i)
             val sid = o.optString("stream_id")
             out.add(
@@ -412,12 +459,13 @@ object Repo {
 
     private const val MAX_AGE = 12 * 3600_000L
 
-    suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean) = withContext(Dispatchers.IO) {
+    suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
         val f = File(ctx.filesDir, "ch_${p.id}.json")
         var list: List<Channel>? = null
         var detectedEpg = ""
         if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < MAX_AGE) {
             try {
+                progress?.invoke("Gespeicherte Senderliste wird geladen …", -1)
                 val o = JSONObject(f.readText())
                 detectedEpg = o.optString("epg")
                 val a = o.getJSONArray("ch")
@@ -431,15 +479,18 @@ object Repo {
         val store = Store(ctx)
         Http.UA = store.userAgent(p.id) ?: Http.CANDIDATES[0]
         if (list == null) {
-            val tries = (listOf(Http.UA) + Http.CANDIDATES).distinct()
+            val fixed = store.userAgentFixed(p.id)
+            val tries = if (fixed) listOf(Http.UA) else (listOf(Http.UA) + Http.CANDIDATES).distinct()
             var lastError: Exception? = null
             for (ua in tries) {
                 Http.UA = ua
+                if (ua != tries.first()) progress?.invoke("Server lehnt ab – versuche andere Player-Kennung …", -1)
                 try {
                     if (p.type == "xtream") {
-                        list = Xtream.load(p, format)
+                        list = Xtream.load(p, format, progress)
                     } else {
-                        val r = Http.open(p.url).use { M3uParser.parse(it) }
+                        progress?.invoke("Verbinde mit Server …", -1)
+                        val r = Http.open(p.url, Http.bytesTo("Playlist wird geladen …", progress)).use { M3uParser.parse(it) }
                         list = r.channels
                         detectedEpg = r.epgUrl ?: ""
                     }
@@ -447,6 +498,9 @@ object Repo {
                     break
                 } catch (e: HttpStatusException) {
                     lastError = e // anderer Kennung eine Chance geben
+                } catch (e: java.net.SocketTimeoutException) {
+                    // manche Anbieter lassen unbekannte Apps ins Leere laufen
+                    lastError = java.net.SocketTimeoutException("Zeitüberschreitung – der Server antwortet nicht")
                 } catch (e: Exception) {
                     // Anmeldefehler können bei manchen Anbietern auch an der Kennung liegen
                     lastError = e
@@ -454,6 +508,7 @@ object Repo {
                 }
             }
             if (list == null) throw lastError ?: IOException("Unbekannter Fehler")
+            progress?.invoke("${list.size} Sender werden gespeichert …", 100)
             val a = JSONArray()
             list.forEach { c -> a.put(JSONArray().put(c.name).put(c.url).put(c.logo ?: "").put(c.group).put(c.epgId ?: "").put(c.number)) }
             f.writeText(JSONObject().put("epg", detectedEpg).put("ch", a).toString())
@@ -468,14 +523,16 @@ object Repo {
         epgUrl = p.epgUrl.ifBlank { if (p.type == "xtream") Xtream.epgUrl(p) else detectedEpg }
     }
 
-    suspend fun loadEpg(ctx: Context, force: Boolean) = withContext(Dispatchers.IO) {
+    suspend fun loadEpg(ctx: Context, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
         val pid = playlistId ?: return@withContext
         val f = File(ctx.filesDir, "epg_$pid.bin")
         if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < MAX_AGE) {
             try { epg = readEpg(f); return@withContext } catch (e: Exception) { }
         }
         if (epgUrl.isBlank()) throw IOException("Keine EPG-Adresse in der Playlist")
-        val map = Http.open(epgUrl).use { XmlTv.parse(it, channels) }
+        progress?.invoke("TV-Programm: Verbinde …", -1)
+        val map = Http.open(epgUrl, Http.bytesTo("TV-Programm", progress)).use { XmlTv.parse(it, channels) }
+        progress?.invoke("TV-Programm wird gespeichert …", 100)
         writeEpg(f, map)
         epg = map
     }

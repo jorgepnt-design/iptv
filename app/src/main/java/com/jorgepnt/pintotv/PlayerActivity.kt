@@ -100,9 +100,14 @@ class PlayerActivity : Activity() {
         initPlayer()
         initLists()
         initTouch()
+        val v = appVersion(this)
+        findViewById<TextView>(R.id.menuTitle).text = "PintoTV $v"
+        findViewById<TextView>(R.id.overlayVersion).text = "PintoTV $v"
+        findViewById<TextView>(R.id.loadVersion).text = "PintoTV $v"
+        findViewById<TextView>(R.id.versionTag).text = "PintoTV $v"
 
         if (store.playlists().isEmpty()) {
-            showStatus("Willkommen bei PintoTV!\nBitte zuerst eine Playlist hinzufügen.")
+            showStatus("Willkommen bei PintoTV ${appVersion(this)}!\nBitte zuerst eine Playlist hinzufügen.")
             startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST)
         } else {
             load(false)
@@ -233,18 +238,24 @@ class PlayerActivity : Activity() {
         val p = store.active() ?: return
         playlist = p
         loading = true
-        showStatus(if (force) "Aktualisiere „${p.name}“ …" else "Lade „${p.name}“ …")
+        hideStatus()
+        showLoading(if (force) "„${p.name}“ wird aktualisiert" else "„${p.name}“ wird geladen", "Starte …", -1)
         scope.launch {
             try {
-                Repo.loadChannels(this@PlayerActivity, p, store.streamFormat, force)
+                Repo.loadChannels(this@PlayerActivity, p, store.streamFormat, force) { step, pct ->
+                    runOnUiThread { showLoading(null, step, pct) }
+                }
             } catch (e: Exception) {
                 loading = false
-                showStatus("Playlist konnte nicht geladen werden:\n${e.message}\n\nMenü-Taste → Playlists")
+                hideLoading()
+                showStatus("Playlist konnte nicht geladen werden:\n${e.message}\n\nMenü → Playlists → Playlist lang drücken → Player-Kennung wählen")
                 return@launch
             }
             loading = false
+            hideLoading()
             hideStatus()
             buildGroups()
+            toast("${Repo.channels.size} Sender in ${Repo.groups.size} Gruppen geladen")
             val last = store.lastUrl(p.id)
             playingGroup = store.lastGroup?.takeIf { it in groupKeys } ?: G_ALL
             viewingGroup = playingGroup
@@ -255,16 +266,39 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private fun showLoading(title: String?, step: String, pct: Int) {
+        findViewById<View>(R.id.loadPane).visibility = View.VISIBLE
+        findViewById<View>(R.id.versionTag).visibility = View.VISIBLE
+        title?.let { findViewById<TextView>(R.id.loadTitle).text = it }
+        findViewById<TextView>(R.id.loadStep).text = step
+        val bar = findViewById<ProgressBar>(R.id.loadBar)
+        val pctView = findViewById<TextView>(R.id.loadPercent)
+        if (pct < 0) { bar.isIndeterminate = true; pctView.text = "" }
+        else { bar.isIndeterminate = false; bar.progress = pct; pctView.text = "$pct %" }
+    }
+
+    private fun hideLoading() {
+        findViewById<View>(R.id.loadPane).visibility = View.GONE
+        findViewById<View>(R.id.versionTag).visibility = View.GONE
+    }
+
     private fun loadEpg(force: Boolean) {
+        val chip = findViewById<TextView>(R.id.epgChip)
         scope.launch {
             try {
-                if (force || Repo.epg.isEmpty()) toast("EPG wird geladen …")
-                Repo.loadEpg(this@PlayerActivity, force)
+                Repo.loadEpg(this@PlayerActivity, force) { step, pct ->
+                    runOnUiThread {
+                        chip.visibility = View.VISIBLE
+                        chip.text = if (pct >= 0) "$step  ·  $pct %" else step
+                    }
+                }
+                chip.visibility = View.GONE
                 channelAdapter.notifyDataSetChanged()
                 if (banner.visibility == View.VISIBLE) showBanner()
-                if (force) toast("EPG aktualisiert")
+                if (force) toast("TV-Programm aktualisiert")
             } catch (e: Exception) {
-                toast("EPG nicht verfügbar: ${e.message}")
+                chip.visibility = View.GONE
+                toast("TV-Programm nicht verfügbar: ${e.message}")
             }
         }
     }
