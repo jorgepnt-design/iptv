@@ -1,6 +1,6 @@
 {
-  "versionCode": 34,
-  "versionName": "2.22",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=34",
-  "notes": "• Aufnahme abgesichert: bei einem Problem erscheint eine Fehlermeldung statt eines Absturzes\n• Nicht beschreibbarer Speicherort → automatisch interner Speicher"
+  "versionCode": 36,
+  "versionName": "2.24",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=36",
+  "notes": "• Filme/Serien/Aufnahmen: schlanke Leiste unten statt Knöpfe in der Bildmitte\n• Aufnahme schreibt gepuffert (schont USB-Sticks)\n• Nach einem Absturz zeigt die App den Grund vom System an"
 }

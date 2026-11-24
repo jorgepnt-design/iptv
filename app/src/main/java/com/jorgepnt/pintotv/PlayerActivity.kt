@@ -110,7 +110,7 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.loadVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.versionTag).text = "PintoTV $v"
 
-        App.takeCrash(this)?.let { report ->
+        (App.takeCrash(this) ?: App.lastExitProblem(this))?.let { report ->
             AlertDialog.Builder(this)
                 .setTitle("PintoTV ist abgestürzt – bitte Foto davon schicken")
                 .setMessage(report)

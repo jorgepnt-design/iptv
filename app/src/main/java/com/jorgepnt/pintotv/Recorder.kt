@@ -22,7 +22,7 @@ object Recorder {
     @Volatile var channelName: String = ""; private set
     @Volatile var startedAt = 0L; private set
     @Volatile var bytes = 0L; private set
-    private var out: FileOutputStream? = null
+    private var out: java.io.OutputStream? = null
     private val lock = Any()
 
     class Place(val dir: File, val label: String)
@@ -63,7 +63,7 @@ object Recorder {
         // falls der gewählte Speicherort nicht beschreibbar ist → interner Speicher
         if (!(f.parentFile?.canWrite() ?: false)) f = File(places(ctx).first().dir.apply { mkdirs() }, f.name)
         synchronized(lock) {
-            out = FileOutputStream(f, true)
+            out = java.io.BufferedOutputStream(FileOutputStream(f, true), 512 * 1024)
             file = f; channelUrl = c.url; channelName = c.name
             startedAt = System.currentTimeMillis(); bytes = 0
             active = true
