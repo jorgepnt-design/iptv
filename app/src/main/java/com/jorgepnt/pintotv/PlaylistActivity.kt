@@ -36,12 +36,13 @@ class PlaylistActivity : Activity() {
         list = findViewById(R.id.plList)
         findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}"
         adapter = TextAdapter(
-            onFocus = { pos -> marked = pos; list.post { adapter.activePos = pos } },
-            onClick = { pos -> select(store.playlists()[pos]) },
-            onLongClick = { pos -> options(store.playlists()[pos]) }
+            onFocus = { pos -> if (pos >= 0) marked = pos },
+            onClick = { pos -> store.playlists().getOrNull(pos)?.let { select(it) } },
+            onLongClick = { pos -> store.playlists().getOrNull(pos)?.let { options(it) } }
         )
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
+        list.itemAnimator = null
         findViewById<Button>(R.id.addXtream).setOnClickListener { editXtream(null) }
         findViewById<Button>(R.id.addM3u).setOnClickListener { editM3u(null) }
         findViewById<Button>(R.id.editPl).setOnClickListener {
@@ -88,6 +89,7 @@ class PlaylistActivity : Activity() {
     }
 
     private fun select(p: Playlist) {
+        Toast.makeText(this, "„${p.name}“ wird geladen …", Toast.LENGTH_SHORT).show()
         store.activeId = p.id
         setResult(RESULT_CANCELED)
         finish()

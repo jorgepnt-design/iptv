@@ -355,6 +355,7 @@ class PlayerActivity : Activity() {
         menuAdapter = TextAdapter(onClick = { onMenu(it) })
         menuList.layoutManager = LinearLayoutManager(this)
         menuList.adapter = menuAdapter
+        menuList.itemAnimator = null
 
         groupAdapter = TextAdapter(
             onFocus = { pos -> groupKeys.getOrNull(pos)?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
