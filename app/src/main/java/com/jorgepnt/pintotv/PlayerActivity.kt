@@ -745,6 +745,8 @@ class PlayerActivity : Activity() {
         val pid = playlist?.id ?: return
         channelAdapter.favorites = store.favorites()
         viewingGroup = playingGroup.takeIf { it in groupKeys } ?: G_ALL
+        // läuft der Sender gar nicht in dieser Gruppe (z. B. per Zifferntaste gewählt) → seine eigene Gruppe zeigen
+        current?.let { c -> if (channelsOf(viewingGroup).none { it.url == c.url }) viewingGroup = c.group.takeIf { it in groupKeys } ?: G_ALL }
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
         channelAdapter.playingUrl = current?.url
@@ -850,9 +852,18 @@ class PlayerActivity : Activity() {
         // so lange versuchen, bis die Liste fertig aufgebaut ist (z. B. direkt nach dem Aufklappen)
         var tries = 0
         lateinit var attempt: Runnable
+        var verified = 0
         attempt = Runnable {
             val vh = rv.findViewHolderForAdapterPosition(p)
-            if (vh != null && vh.itemView.isShown) vh.itemView.requestFocus()
+            if (vh != null && vh.itemView.isShown) {
+                vh.itemView.requestFocus()
+                // Android setzt den Fokus nach dem Einblenden manchmal auf ein altes Element zurück – nachprüfen
+                if (verified++ < 3) rv.postDelayed({
+                    val f = currentFocus
+                    val cur = f?.let { rv.findContainingItemView(it) }?.let { rv.getChildAdapterPosition(it) }
+                    if (cur != p) rv.post(attempt)
+                }, 150)
+            }
             else if (++tries < 20) { rv.requestLayout(); rv.postDelayed(attempt, 40) }
         }
         rv.post(attempt)
