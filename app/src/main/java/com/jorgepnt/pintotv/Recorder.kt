@@ -142,15 +142,57 @@ object Recorder {
         q.offer(b.copyOfRange(off, off + len))
     }
 
-    /** neuer „Abzweig" für jede Datenquelle des Players */
+    /** neuer „Abzweig" für jede Datenquelle des Players – schreibt nur echte Videodaten (MPEG-TS) */
     fun sink(): DataSink = object : DataSink {
-        private var record = false
-        override fun open(dataSpec: DataSpec) {
-            val path = dataSpec.uri.path?.lowercase() ?: ""
-            record = active && !path.endsWith(".m3u8") && !path.endsWith(".m3u") // nur Videodaten
+        private var state = 0 // 0 = noch nicht entschieden, 1 = Video → schreiben, 2 = kein Video → verwerfen
+        override fun open(dataSpec: DataSpec) { state = if (active) 0 else 2 }
+        override fun write(buffer: ByteArray, offset: Int, length: Int) {
+            if (length <= 0) return
+            if (state == 0) {
+                // am Inhalt erkennen: MPEG-TS beginnt mit dem Sync-Byte 0x47 – Stream-Listen (#EXTM3U) sind Text
+                state = if (buffer[offset] == 0x47.toByte()) 1 else 2
+            }
+            if (state == 1) enqueue(buffer, offset, length)
         }
-        override fun write(buffer: ByteArray, offset: Int, length: Int) { if (record) enqueue(buffer, offset, length) }
-        override fun close() { record = false }
+        override fun close() { state = 2 }
+    }
+
+    /**
+     * Repariert eine Aufnahme: behält nur gültige 188-Byte-TS-Pakete (entfernt z. B. eingestreute Stream-Listen).
+     * Gibt die reparierte Datei zurück oder die Originaldatei, wenn sie schon sauber war.
+     */
+    fun repairIfNeeded(f: File): File {
+        val head = ByteArray(188 * 3)
+        val n = f.inputStream().use { it.read(head) }
+        val clean = n >= 377 && head[0] == 0x47.toByte() && head[188] == 0x47.toByte() && head[376] == 0x47.toByte()
+        if (clean) return f
+        val out = File(f.parentFile, f.nameWithoutExtension + "_repariert.ts")
+        if (out.exists() && out.length() > 0) return out
+        java.io.BufferedInputStream(f.inputStream(), 1 shl 20).use { inp ->
+            BufferedOutputStream(FileOutputStream(out), 1 shl 20).use { o ->
+                val buf = ByteArray(1 shl 20)
+                var carry = ByteArray(0)
+                var inRun = false
+                while (true) {
+                    val r = inp.read(buf)
+                    if (r < 0) break
+                    val data = carry + buf.copyOf(r)
+                    var i = 0
+                    var lastEnd = if (inRun) 0 else -1
+                    while (i + 188 <= data.size) {
+                        // gültig: beginnt mit 0x47 und das nächste Paket auch – oder schließt direkt an ein gültiges an
+                        if (data[i] == 0x47.toByte() &&
+                            (i + 188 >= data.size || data[i + 188] == 0x47.toByte() || lastEnd == i)) {
+                            o.write(data, i, 188); i += 188; lastEnd = i
+                        } else i++
+                    }
+                    inRun = lastEnd == i
+                    carry = data.copyOfRange(i, data.size)
+                }
+            }
+        }
+        if (out.length() < 50_000) { out.delete(); return f }
+        return out
     }
 
     fun elapsed(): String {
@@ -162,6 +204,6 @@ object Recorder {
     /** Aufnahmen von allen Speicherorten */
     fun list(ctx: Context): List<File> =
         places(ctx).flatMap { p -> p.dir.listFiles()?.toList() ?: emptyList() }
-            .filter { it.isFile && it.extension == "ts" && !(active && it == file) }
+            .filter { it.isFile && it.extension == "ts" && !(active && it == file) && !it.nameWithoutExtension.endsWith("_repariert") }
             .sortedByDescending { it.lastModified() }
 }

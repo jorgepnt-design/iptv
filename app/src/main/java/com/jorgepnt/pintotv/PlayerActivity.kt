@@ -682,10 +682,17 @@ class PlayerActivity : Activity() {
                 AlertDialog.Builder(this).setTitle(f.nameWithoutExtension)
                     .setItems(arrayOf("▶ Abspielen", "✕ Löschen")) { _, a ->
                         if (a == 0) {
-                            val u = android.net.Uri.fromFile(f).toString()
-                            hideOverlay()
-                            startActivity(Intent(this, VodPlayerActivity::class.java)
-                                .putExtra("url", u).putExtra("title", f.nameWithoutExtension).putExtra("pos", store.resumePos(u)))
+                            scope.launch {
+                                // Aufnahme prüfen und falls nötig reparieren (im Hintergrund)
+                                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    try { Recorder.repairIfNeeded(f) } catch (e: Throwable) { f }
+                                }
+                                if (ok != f) toast("Aufnahme wurde repariert")
+                                val u = android.net.Uri.fromFile(ok).toString()
+                                hideOverlay()
+                                startActivity(Intent(this@PlayerActivity, VodPlayerActivity::class.java)
+                                    .putExtra("url", u).putExtra("title", f.nameWithoutExtension).putExtra("pos", store.resumePos(u)))
+                            }
                         } else AlertDialog.Builder(this).setTitle("Aufnahme löschen?").setMessage(f.nameWithoutExtension)
                             .setPositiveButton("Löschen") { _, _ -> f.delete(); toast("Gelöscht"); showRecordings() }
                             .setNegativeButton("Abbrechen", null).show()

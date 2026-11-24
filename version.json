@@ -1,6 +1,6 @@
 {
-  "versionCode": 41,
-  "versionName": "2.29",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=41",
-  "notes": "• Aufnahme startet sofort ohne Auswahlfenster (Versionsfrage im Menü einschaltbar)\n• Tastenfokus bleibt immer beim Fernsehbild – behebt „reagiert nicht“ beim Aufnehmen"
+  "versionCode": 42,
+  "versionName": "2.30",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=42",
+  "notes": "• Aufnahme schreibt nur noch echte Videodaten (Stream-Listen werden herausgefiltert)\n• Bisherige Aufnahmen werden beim Abspielen automatisch repariert"
 }
