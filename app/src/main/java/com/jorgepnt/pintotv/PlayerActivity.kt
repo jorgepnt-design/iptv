@@ -386,7 +386,6 @@ class PlayerActivity : Activity() {
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
-        "Version beim Aufnehmen fragen: " + if (getSharedPreferences("pintotv", MODE_PRIVATE).getBoolean("recAskVersion", false)) "an" else "aus",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
 
@@ -563,7 +562,7 @@ class PlayerActivity : Activity() {
 
     private fun startRecording() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
-        val askVersion = getSharedPreferences("pintotv", MODE_PRIVATE).getBoolean("recAskVersion", false)
+        val askVersion = false // nie nach der Senderversion fragen
         val variants = if (askVersion) try { variantsOf(c) } catch (e: Throwable) { listOf(c) } else listOf(c)
         if (variants.size > 1) {
             AlertDialog.Builder(this)

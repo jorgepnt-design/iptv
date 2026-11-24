@@ -1,6 +1,6 @@
 {
-  "versionCode": 42,
-  "versionName": "2.30",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=42",
-  "notes": "• Aufnahme schreibt nur noch echte Videodaten (Stream-Listen werden herausgefiltert)\n• Bisherige Aufnahmen werden beim Abspielen automatisch repariert"
+  "versionCode": 43,
+  "versionName": "2.31",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=43",
+  "notes": "• Menü: Eintrag „Version beim Aufnehmen fragen“ entfernt, Menüspalte breiter"
 }
