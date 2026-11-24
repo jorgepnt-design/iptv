@@ -516,7 +516,7 @@ class PlayerActivity : Activity() {
         ui.removeCallbacks(recTicker)
         findViewById<View>(R.id.recIndicator).visibility = View.GONE
         if (f != null) toast("Aufnahme gespeichert: $name (${mb(f.length())}) – Menü → Aufnahmen")
-        else toast("Aufnahme beendet (zu kurz, nicht gespeichert)")
+        else toast("Aufnahme beendet – es kamen keine Daten an (${mb(Recorder.bytes)}), nichts gespeichert")
     }
 
     private fun showRecordings() {

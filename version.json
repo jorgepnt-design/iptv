@@ -1,6 +1,6 @@
 {
-  "versionCode": 29,
-  "versionName": "2.17",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=29",
-  "notes": "• Aufnehmen: Menü → „● Aufnahme starten“ oder OK lang auf Sender → „● Aufnehmen“\n• Menü → „Aufnahmen“: abspielen mit Spulen, löschen"
+  "versionCode": 30,
+  "versionName": "2.18",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=30",
+  "notes": "• Aufnahmen: letzte Aufnahme erscheint jetzt in der Liste"
 }

@@ -78,5 +78,5 @@ object Recorder {
     }
 
     fun list(ctx: Context): List<File> =
-        dir(ctx).listFiles()?.filter { it.isFile && it.extension == "ts" && it != file }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        dir(ctx).listFiles()?.filter { it.isFile && it.extension == "ts" && !(active && it == file) }?.sortedByDescending { it.lastModified() } ?: emptyList()
 }
