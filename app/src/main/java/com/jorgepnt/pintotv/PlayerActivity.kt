@@ -1040,11 +1040,9 @@ class PlayerActivity : Activity() {
                     channelList -> return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> if (rv != null) {
-                    val item = rv.findContainingItemView(currentFocus!!)!!
-                    val pos = rv.getChildAdapterPosition(item)
-                    val n = rv.adapter?.itemCount ?: 0
-                    if (code == KeyEvent.KEYCODE_DPAD_UP && pos <= 0) return true
-                    if (code == KeyEvent.KEYCODE_DPAD_DOWN && pos >= n - 1) return true
+                    // selbst blättern: Markierung bleibt immer in der Spalte, auch bei schnellem Drücken
+                    ListNav.move(rv, currentFocus, if (code == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+                    return true
                 }
                 KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> if (rv != null) { pageList(rv, -8); return true }
                 KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> if (rv != null) { pageList(rv, 8); return true }

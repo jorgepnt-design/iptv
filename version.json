@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "versionName": "2.12",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=24",
-  "notes": "• Mehrere Sender markieren und in eine Favoritenliste speichern (OK lang → „Mehrere Sender markieren“)\n• Markierung bleibt nach dem Speichern von Favoriten stehen\n• Filme & Serien: Playlist oben auswählbar"
+  "versionCode": 25,
+  "versionName": "2.13",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=25",
+  "notes": "• Schnelles Blättern: Markierung springt nicht mehr in die linke Spalte (Sender, Gruppen, Filme, Serien)"
 }

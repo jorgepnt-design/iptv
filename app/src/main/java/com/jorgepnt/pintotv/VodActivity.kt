@@ -72,6 +72,26 @@ class VodActivity : Activity() {
         load()
     }
 
+    override fun dispatchKeyEvent(e: android.view.KeyEvent): Boolean {
+        if (e.action == android.view.KeyEvent.ACTION_DOWN &&
+            (e.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || e.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN)) {
+            val f = currentFocus
+            val rv = when {
+                f != null && cats.findContainingItemView(f) != null -> cats
+                f != null && grid.findContainingItemView(f) != null -> grid
+                else -> null
+            }
+            if (rv != null) {
+                val up = e.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                // oberste Kategorie + hoch → zu „Suchen“ / „Kategorien“
+                if (rv == cats && up && cats.getChildAdapterPosition(cats.findContainingItemView(f!!)!!) == 0)
+                    return super.dispatchKeyEvent(e)
+                return ListNav.move(rv, f, if (up) -1 else 1)
+            }
+        }
+        return super.dispatchKeyEvent(e)
+    }
+
     override fun onResume() {
         super.onResume()
         if (::gridAdapter.isInitialized) gridAdapter.notifyDataSetChanged() // Fortschrittsbalken aktualisieren
