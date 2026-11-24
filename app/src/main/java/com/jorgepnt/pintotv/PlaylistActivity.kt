@@ -106,12 +106,14 @@ class PlaylistActivity : Activity() {
     }
 
     private fun chooseUa(p: Playlist) {
-        val names = listOf("Automatisch (empfohlen)", "okhttp (wie viele Player)", "VLC", "Browser (Chrome)", "FFmpeg / Lavf", "Android-System", "PintoTV")
+        val names = listOf("Automatisch (empfohlen)", "Wie TiviMate", "Wie IPTV Smarters", "okhttp", "VLC", "Browser (Chrome)", "FFmpeg / Lavf", "Android-System", "PintoTV", "Eigene Kennung eingeben …")
         val current = store.userAgent(p.id)
-        val sel = if (!store.userAgentFixed(p.id)) 0 else (Http.CANDIDATES.indexOf(current) + 1).coerceAtLeast(0)
+        val idx = Http.CANDIDATES.indexOf(current)
+        val sel = if (!store.userAgentFixed(p.id)) 0 else if (idx >= 0) idx + 1 else names.size - 1
         AlertDialog.Builder(this)
             .setTitle("Player-Kennung für „${p.name}“")
             .setSingleChoiceItems(names.toTypedArray(), sel) { d, w ->
+                if (w == names.size - 1) { d.dismiss(); customUa(p); return@setSingleChoiceItems }
                 store.setUserAgentFixed(p.id, if (w == 0) null else Http.CANDIDATES[w - 1])
                 File(filesDir, "ch_${p.id}.json").delete()
                 d.dismiss()
@@ -120,6 +122,23 @@ class PlaylistActivity : Activity() {
                 setResult(RESULT_OK)
                 finish()
             }.show()
+    }
+
+    private fun customUa(p: Playlist) {
+        val f = field("z. B. TiviMate/5.1.6 (Android 11)", store.userAgent(p.id) ?: "")
+        AlertDialog.Builder(this)
+            .setTitle("Eigene Player-Kennung")
+            .setView(form(f))
+            .setPositiveButton("Speichern") { _, _ ->
+                val ua = f.text.toString().trim()
+                if (ua.isEmpty()) return@setPositiveButton
+                store.setUserAgentFixed(p.id, ua)
+                File(filesDir, "ch_${p.id}.json").delete()
+                store.activeId = p.id
+                setResult(RESULT_OK)
+                finish()
+            }
+            .setNegativeButton("Abbrechen", null).show()
     }
 
     private fun field(hint: String, value: String, password: Boolean = false) = EditText(this).apply {

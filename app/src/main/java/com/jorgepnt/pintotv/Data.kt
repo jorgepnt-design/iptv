@@ -135,6 +135,8 @@ fun appVersion(ctx: Context): String = try {
 object Http {
     /** Kennungen, die viele Anbieter zulassen – werden der Reihe nach probiert */
     val CANDIDATES = listOf(
+        "TiviMate/5.1.6 (Android 11)",
+        "IPTVSmartersPlayer",
         "okhttp/4.12.0",
         "VLC/3.0.21 LibVLC/3.0.21",
         "Mozilla/5.0 (Linux; Android 11; SHIELD Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
