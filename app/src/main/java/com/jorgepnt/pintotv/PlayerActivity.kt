@@ -402,7 +402,8 @@ class PlayerActivity : Activity() {
                 else if (g == G_SWITCH) switchPlaylist()
                 else if (g == G_MOVIES || g == G_SERIES) openVod(g == G_SERIES)
                 else { g?.let { showGroup(it) }; focusChannel(-1) }
-            }
+            },
+            onLongClick = { pos -> if (groupKeys.getOrNull(pos) == G_RECENT) confirmClearRecents() }
         )
         groupList.layoutManager = LinearLayoutManager(this)
         groupList.adapter = groupAdapter
@@ -445,9 +446,12 @@ class PlayerActivity : Activity() {
                 "In Multi-View öffnen",
                 "Abspielen",
                 "☑ Mehrere Sender markieren …",
-                if (Recorder.active && Recorder.channelUrl == c.url) "■ Aufnahme beenden" else "● Aufnehmen"
+                if (Recorder.active && Recorder.channelUrl == c.url) "■ Aufnahme beenden" else "● Aufnehmen",
+                *(if (viewingGroup == G_RECENT) arrayOf("✕ Aus Verlauf entfernen", "🗑 Ganzen Verlauf löschen") else emptyArray())
             )) { _, w ->
                 when (w) {
+                    5 -> { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
+                    6 -> confirmClearRecents()
                     4 -> if (Recorder.active && Recorder.channelUrl == c.url) stopRecording() else {
                         if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
                         hideOverlay(); startRecording()
@@ -485,6 +489,21 @@ class PlayerActivity : Activity() {
                 hideOverlay()
                 load(false)
             }.show()
+    }
+
+    private fun confirmClearRecents() {
+        val pid = playlist?.id ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Verlauf „Zuletzt gesehen“ löschen?")
+            .setMessage("${store.recents(pid).size} Sender werden aus dem Verlauf entfernt.")
+            .setPositiveButton("Löschen") { _, _ ->
+                store.clearRecents(pid)
+                if (viewingGroup == G_RECENT) channelAdapter.items = channelsOf(G_RECENT)
+                refreshGroupCounts()
+                toast("Verlauf gelöscht")
+                if (overlay.visibility == View.VISIBLE) focusGroup()
+            }
+            .setNegativeButton("Abbrechen", null).show()
     }
 
     // ---------- Aufnahme ----------

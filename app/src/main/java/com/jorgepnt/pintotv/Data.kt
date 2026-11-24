@@ -213,6 +213,12 @@ class Store(ctx: Context) {
         sp.edit().putString("recent_$pid", a.toString()).apply()
     }
 
+    fun clearRecents(pid: String) { sp.edit().remove("recent_$pid").commit() }
+    fun removeRecent(pid: String, url: String) {
+        val a = JSONArray(); recents(pid).filter { it != url }.forEach { a.put(it) }
+        sp.edit().putString("recent_$pid", a.toString()).commit()
+    }
+
     fun lastUrl(pid: String): String? = sp.getString("last_$pid", null)
     fun setLastUrl(pid: String, url: String) { sp.edit().putString("last_$pid", url).commit() }
 
