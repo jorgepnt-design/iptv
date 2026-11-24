@@ -119,6 +119,9 @@ class PlayerActivity : Activity() {
                 .show()
         }
 
+        // wöchentliche automatische Sicherung (im Hintergrund)
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) { try { AutoBackup.runIfDue(this@PlayerActivity) } catch (_: Throwable) { } }
+
         // einmal beim Start still nach Updates schauen
         ui.postDelayed({ Updater.check(this, scope, quiet = true) }, 8000)
 
@@ -1224,13 +1227,26 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.bannerNumber).text = c.number.toString()
         findViewById<ImageView>(R.id.bannerLogo).load(c.logo)
         findViewById<TextView>(R.id.bannerName).text = c.name
+        findViewById<TextView>(R.id.bannerGroup).text = c.group
+        // kleine Hinweise: Qualität, Favorit, Aufnahme
+        val n = c.name.lowercase()
+        val badges = listOfNotNull(
+            when { "4k" in n || "uhd" in n -> "UHD"; "fhd" in n || "1080" in n -> "FHD"; Regex("\\bhd").containsMatchIn(n) -> "HD"; Regex("\\bsd\\b").containsMatchIn(n) -> "SD"; else -> null },
+            if (store.isFavorite(c)) "★" else null,
+            if (Recorder.active && Recorder.channelUrl == c.url) "● REC" else null
+        )
+        findViewById<TextView>(R.id.bannerBadges).text = badges.joinToString("   ")
         findViewById<TextView>(R.id.bannerNow).text =
-            cur?.let { "${Fmt.time(it.start)} – ${Fmt.time(it.stop)}   ${it.title}" } ?: "Keine Programminformationen"
+            cur?.let { "Jetzt   ${Fmt.time(it.start)} – ${Fmt.time(it.stop)}   ${it.title}" } ?: "Keine Programminformationen"
         val pb = findViewById<ProgressBar>(R.id.bannerProgress)
-        pb.visibility = if (cur != null) View.VISIBLE else View.INVISIBLE
-        cur?.let { pb.progress = Fmt.progress(it, now) }
-        findViewById<TextView>(R.id.bannerNext).text = next?.let { "Danach  ${Fmt.time(it.start)}   ${it.title}" } ?: ""
+        val rem = findViewById<TextView>(R.id.bannerRemaining)
+        if (cur != null) {
+            pb.visibility = View.VISIBLE; pb.progress = Fmt.progress(cur, now)
+            rem.text = "noch ${((cur.stop - now) / 60000).coerceAtLeast(0)} Min."
+        } else { pb.visibility = View.INVISIBLE; rem.text = "" }
+        findViewById<TextView>(R.id.bannerNext).text = next?.let { "Danach   ${Fmt.time(it.start)}   ${it.title}" } ?: ""
         findViewById<TextView>(R.id.bannerClock).text = Fmt.time(now)
+        findViewById<TextView>(R.id.bannerDate).text = Fmt.day(now)
         banner.visibility = View.VISIBLE
         ui.removeCallbacks(hideBannerTask)
         ui.postDelayed(hideBannerTask, 5000)

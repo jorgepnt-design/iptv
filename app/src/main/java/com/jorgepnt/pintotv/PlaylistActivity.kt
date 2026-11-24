@@ -124,9 +124,11 @@ class PlaylistActivity : Activity() {
             .setItems(arrayOf(
                 "📺 An anderen Fernseher senden",
                 "📥 Von anderem Fernseher empfangen",
-                "📱 Mit dem Handy sichern / laden"
+                "📱 Mit dem Handy sichern / laden",
+                "🗂 Automatische Sicherungen (wöchentlich)"
             )) { _, w ->
                 when (w) {
+                    3 -> showAutoBackups()
                     0 -> scanAndSend()
                     1 -> AlertDialog.Builder(this).setTitle("Empfangen")
                         .setMessage("Dieser Fernseher ist jetzt empfangsbereit, solange dieser Playlist-Bildschirm offen ist.\n\n" +
@@ -140,6 +142,31 @@ class PlaylistActivity : Activity() {
                         .setPositiveButton("OK", null).show()
                 }
             }.show()
+    }
+
+    private fun showAutoBackups() {
+        scope.launch {
+            val files = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AutoBackup.list(this@PlaylistActivity) }
+            val labels = files.map { f -> "Sicherung vom ${AutoBackup.label(f)}" } + "💾 Jetzt sichern"
+            AlertDialog.Builder(this@PlaylistActivity)
+                .setTitle("Automatische Sicherungen")
+                .setItems(labels.toTypedArray()) { _, w ->
+                    if (w == files.size) {
+                        scope.launch {
+                            val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AutoBackup.runIfDue(this@PlaylistActivity, force = true) }
+                            Toast.makeText(this@PlaylistActivity, if (f != null) "Gesichert" else "Nichts zu sichern", Toast.LENGTH_SHORT).show()
+                        }
+                        return@setItems
+                    }
+                    val f = files[w]
+                    scope.launch {
+                        val json = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { f.readText() }
+                        confirmRestore(json, "Sicherung vom ${AutoBackup.label(f)}")
+                    }
+                }
+                .setNegativeButton("Schließen", null)
+                .show()
+        }
     }
 
     private fun scanAndSend() {
@@ -207,7 +234,7 @@ class PlaylistActivity : Activity() {
     private fun confirmRestore(json: String, from: String) {
         AlertDialog.Builder(this)
             .setTitle("Sicherung empfangen")
-            .setMessage("Von ${if (from.isNotBlank()) from else "einem Gerät"}:\n${store.describe(json)}\n\n" +
+            .setMessage("${if (from.startsWith("Sicherung")) from else "Von " + (if (from.isNotBlank()) from else "einem Gerät")}:\n${store.describe(json)}\n\n" +
                 "Übernehmen? Die Einstellungen auf diesem Fernseher werden dabei ersetzt.")
             .setPositiveButton("Übernehmen") { _, _ ->
                 try {

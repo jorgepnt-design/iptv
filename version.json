@@ -1,6 +1,6 @@
 {
-  "versionCode": 44,
-  "versionName": "2.32",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=44",
-  "notes": "• Stream-Format: Auswahlfenster mit Erklärung (TS empfohlen) statt Umschalter"
+  "versionCode": 45,
+  "versionName": "2.33",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=45",
+  "notes": "• Neue Info-Leiste beim Umschalten (großes Logo, Jetzt/Danach, Restzeit, Datum)\n• Automatische Sicherung jede Woche (Playlists → Übertragen → Automatische Sicherungen)"
 }
