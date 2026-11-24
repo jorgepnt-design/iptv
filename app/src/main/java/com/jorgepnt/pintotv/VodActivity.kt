@@ -66,6 +66,8 @@ class VodActivity : Activity() {
         grid.itemAnimator = null
 
         findViewById<View>(R.id.vodSearch).setOnClickListener { search() }
+        findViewById<View>(R.id.vodPlaylist).setOnClickListener { choosePlaylist() }
+        updatePlaylistLabel()
         findViewById<View>(R.id.vodManage).setOnClickListener { manageCats() }
         load()
     }
@@ -79,6 +81,31 @@ class VodActivity : Activity() {
         super.onDestroy()
         ui.removeCallbacksAndMessages(null)
         scope.cancel()
+    }
+
+    private fun updatePlaylistLabel() {
+        findViewById<TextView>(R.id.vodPlaylist).text = "⇄ Playlist: ${playlist.name}"
+    }
+
+    /** andere Playlist für Filme/Serien wählen */
+    private fun choosePlaylist() {
+        val pls = store.playlists()
+        AlertDialog.Builder(this)
+            .setTitle("Filme/Serien aus welcher Playlist?")
+            .setItems(pls.map { (if (it.id == playlist.id) "● " else "    ") + it.name + "   (" + (if (it.type == "xtream") "Xtream" else "M3U") + ")" }.toTypedArray()) { _, w ->
+                val p = pls[w]
+                if (p.id == playlist.id) return@setItems
+                if (p.type != "xtream" && p.id != Repo.playlistId) {
+                    Toast.makeText(this, "Bei M3U-Playlists bitte zuerst im Live-TV auf „${p.name}“ wechseln", Toast.LENGTH_LONG).show()
+                    return@setItems
+                }
+                playlist = p
+                updatePlaylistLabel()
+                searchResults = emptyList(); shownCat = null
+                gridAdapter.items = emptyList()
+                catAdapter.items = emptyList()
+                load()
+            }.show()
     }
 
     private fun loading(text: String?, pct: Int = -1) {
@@ -98,15 +125,17 @@ class VodActivity : Activity() {
             } catch (e: Exception) {
                 loading(null)
                 AlertDialog.Builder(this@VodActivity).setTitle("Laden fehlgeschlagen").setMessage(e.message)
-                    .setPositiveButton("OK") { _, _ -> finish() }.setCancelable(false).show()
+                    .setPositiveButton("Andere Playlist") { _, _ -> choosePlaylist() }
+                    .setNegativeButton("Zurück") { _, _ -> finish() }.setCancelable(false).show()
                 return@launch
             }
             loading(null)
             if (catalog.items.isEmpty()) {
                 AlertDialog.Builder(this@VodActivity)
                     .setTitle(if (series) "Keine Serien" else "Keine Filme")
-                    .setMessage("Diese Playlist enthält keine ${if (series) "Serien" else "Filme"}.")
-                    .setPositiveButton("OK") { _, _ -> finish() }.setCancelable(false).show()
+                    .setMessage("Die Playlist „${playlist.name}“ enthält keine ${if (series) "Serien" else "Filme"}.")
+                    .setPositiveButton("Andere Playlist") { _, _ -> choosePlaylist() }
+                    .setNegativeButton("Zurück") { _, _ -> finish() }.setCancelable(false).show()
                 return@launch
             }
             buildCats()
