@@ -133,6 +133,9 @@ object Recorder {
         q.offer(STOP)
     }
 
+    /** Daten direkt einspeisen (vom Timeshift-Puffer) */
+    fun feed(b: ByteArray, off: Int, len: Int) { if (active) enqueue(b, off, len) }
+
     private fun enqueue(b: ByteArray, off: Int, len: Int) {
         val q = queue ?: return
         if (!active || len <= 0) return

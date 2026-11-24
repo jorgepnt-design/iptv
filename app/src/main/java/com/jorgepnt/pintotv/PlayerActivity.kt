@@ -140,6 +140,7 @@ class PlayerActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        if (tsMode) exitTimeshift(restart = false)
         if (Recorder.active) stopRecording()
         player.stop()
     }
@@ -226,6 +227,7 @@ class PlayerActivity : Activity() {
                     player.seekToDefaultPosition(); player.prepare(); return
                 }
                 val ch = current ?: return
+                if (tsMode) { playFromBuffer(tsPosition(), paused = !player.playWhenReady); return }
                 if (retries < 3) {
                     retries++
                     showStatus("Verbindung unterbrochen – neuer Versuch ($retries/3) …")
@@ -246,6 +248,7 @@ class PlayerActivity : Activity() {
     private fun play(c: Channel, list: List<Channel>) {
         val pid = playlist?.id ?: return
         if (Recorder.active && Recorder.channelUrl != c.url) stopRecording()
+        if (tsMode) exitTimeshift(restart = false)
         if (current?.url != c.url) previous = current
         current = c
         zapList = list.ifEmpty { Repo.channels }
@@ -404,6 +407,7 @@ class PlayerActivity : Activity() {
 
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
+        if (tsMode) "▶ Zurück zu Live" else "⏸ Pause (Timeshift)",
         if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
@@ -553,6 +557,100 @@ class PlayerActivity : Activity() {
                 if (overlay.visibility == View.VISIBLE) focusGroup()
             }
             .setNegativeButton("Abbrechen", null).show()
+    }
+
+    // ---------- Timeshift ----------
+
+    private var tsMode = false
+    private var tsBaseTime = 0L   // Pufferzeit (ms seit Start) am Beginn der aktuellen Wiedergabe
+    private var tsCounter = 0
+
+    /** Adresse als durchgehender TS-Stream (bei Xtream auch für HLS-Sender möglich) */
+    private fun tsUrlFor(c: Channel): String? = when {
+        !c.url.contains(".m3u8", true) -> c.url
+        playlist?.type == "xtream" -> c.url.replace(Regex("\\.m3u8(\\?.*)?$", RegexOption.IGNORE_CASE), ".ts")
+        else -> null
+    }
+
+    private fun togglePause() {
+        if (!tsMode) { enterTimeshift(); return }
+        player.playWhenReady = !player.playWhenReady
+        showTsBar()
+    }
+
+    private fun enterTimeshift() {
+        val c = current ?: return
+        val url = tsUrlFor(c) ?: run { toast("Pause ist bei diesem Sender nicht möglich (HLS-Stream aus M3U)"); return }
+        // Live-Verbindung schließen, dann über EINE Verbindung in den Puffer laden
+        player.stop()
+        Timeshift.start(this, url, Http.UA)
+        tsMode = true
+        tsBaseTime = 0
+        playFromBuffer(0, paused = true)
+        showTsBar()
+        toast("⏸ Pausiert – das Programm wird zwischengespeichert")
+    }
+
+    private fun playFromBuffer(timeMs: Long, paused: Boolean) {
+        val off = Timeshift.offsetAt(timeMs)
+        tsBaseTime = Timeshift.timeAt(off)
+        val extractors = androidx.media3.extractor.DefaultExtractorsFactory().setTsExtractorFlags(
+            androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
+                androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
+        val src = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory({ TimeshiftDataSource() }, extractors)
+            .createMediaSource(MediaItem.fromUri("timeshift://puffer?o=$off&n=${++tsCounter}"))
+        player.setMediaSource(src)
+        player.prepare()
+        player.playWhenReady = !paused
+    }
+
+    /** aktuelle Wiedergabezeit im Puffer */
+    private fun tsPosition(): Long = tsBaseTime + player.currentPosition.coerceAtLeast(0)
+
+    private fun tsSeek(delta: Long) {
+        if (!tsMode) return
+        val live = Timeshift.bufferedMs()
+        val target = (tsPosition() + delta).coerceIn(0, (live - 3000).coerceAtLeast(0))
+        if (delta > 0 && live - tsPosition() < 5000) { exitTimeshift(restart = true); toast("Live"); return }
+        playFromBuffer(target, paused = !player.playWhenReady)
+        showTsBar()
+    }
+
+    private fun exitTimeshift(restart: Boolean) {
+        if (!tsMode) return
+        tsMode = false
+        Timeshift.stop()
+        ui.removeCallbacks(tsUpdater)
+        findViewById<View>(R.id.tsBar).visibility = View.GONE
+        if (restart) current?.let { startStream(it) }
+    }
+
+    private val tsUpdater = object : Runnable {
+        override fun run() {
+            if (!tsMode) return
+            val live = Timeshift.bufferedMs()
+            val pos = tsPosition().coerceAtMost(live)
+            val behind = (live - pos).coerceAtLeast(0)
+            val state = if (player.playWhenReady) "▶ Timeshift" else "⏸ Pausiert"
+            findViewById<TextView>(R.id.tsText).text = "$state   ·   ${fmtDur(behind)} hinter Live   ·   Puffer ${fmtDur(live)}" +
+                (Timeshift.error?.takeIf { !Timeshift.active }?.let { "   ·   Verbindung verloren" } ?: "")
+            findViewById<ProgressBar>(R.id.tsProgress).progress = if (live > 0) (pos * 1000 / live).toInt() else 0
+            ui.postDelayed(this, 500)
+        }
+    }
+    private val hideTsBar = Runnable { if (player.playWhenReady) findViewById<View>(R.id.tsBar).visibility = View.GONE }
+
+    private fun showTsBar() {
+        hideBanner()
+        findViewById<View>(R.id.tsBar).visibility = View.VISIBLE
+        ui.removeCallbacks(tsUpdater); ui.post(tsUpdater)
+        ui.removeCallbacks(hideTsBar); ui.postDelayed(hideTsBar, 5000)
+    }
+
+    private fun fmtDur(ms: Long): String {
+        val s = ms / 1000
+        return if (s >= 3600) String.format(java.util.Locale.GERMANY, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+        else String.format(java.util.Locale.GERMANY, "%d:%02d", s / 60, s % 60)
     }
 
     // ---------- Aufnahme ----------
@@ -1226,6 +1324,8 @@ class PlayerActivity : Activity() {
             item == "Aktualisieren" -> { hideOverlay(); load(true) }
             item.startsWith("Stream-Format") -> chooseStreamFormat(i)
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
+            item == "⏸ Pause (Timeshift)" -> { hideOverlay(); ui.postDelayed({ togglePause() }, 200) }
+            item == "▶ Zurück zu Live" -> { hideOverlay(); exitTimeshift(restart = true); toast("Live") }
             item == "● Aufnahme starten" -> { hideOverlay(); ui.postDelayed({ startRecording() }, 300) }
             item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
             item == "Aufnahmen" -> showRecordings()
@@ -1434,6 +1534,11 @@ class PlayerActivity : Activity() {
             return super.dispatchKeyEvent(e)
         }
 
+        if (tsMode) when (code) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> { tsSeek(-10_000L * (if (e.repeatCount > 5) 6 else 1)); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { tsSeek(30_000L * (if (e.repeatCount > 5) 4 else 1)); return true }
+            KeyEvent.KEYCODE_BACK -> { exitTimeshift(restart = true); toast("Live"); return true }
+        }
         when (code) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> { swallowCenter = true; showOverlay(); return true }
             KeyEvent.KEYCODE_DPAD_UP -> { zap(-1); return true }
@@ -1448,7 +1553,11 @@ class PlayerActivity : Activity() {
             KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                 previous?.let { playingGroup = G_ALL; play(it, zapList) }; return true
             }
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { player.playWhenReady = !player.playWhenReady; return true }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_SPACE -> {
+                if (e.repeatCount == 0) togglePause(); return true
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> { if (tsMode) tsSeek(-10_000L * (if (e.repeatCount > 5) 6 else 1)) else togglePause(); return true }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (tsMode) tsSeek(30_000L * (if (e.repeatCount > 5) 4 else 1)); return true }
             KeyEvent.KEYCODE_MEDIA_RECORD -> { if (Recorder.active) stopRecording() else startRecording(); return true }
             KeyEvent.KEYCODE_BACK -> {
                 if (banner.visibility == View.VISIBLE) { hideBanner(); return true }

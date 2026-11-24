@@ -132,6 +132,46 @@
         android:textStyle="bold"
         android:visibility="gone" />
 
+    <!-- Timeshift-Leiste -->
+    <LinearLayout
+        android:id="@+id/tsBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginBottom="28dp"
+        android:background="@drawable/card_bg"
+        android:elevation="9dp"
+        android:orientation="vertical"
+        android:padding="18dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <ProgressBar
+            android:id="@+id/tsProgress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:layout_marginVertical="8dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/progress" />
+
+        <TextView
+            android:id="@+id/tsHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⏯ Pause/Weiter  ·  ◀ 10 s zurück  ·  ▶ 30 s vor  ·  Zurück = Live"
+            android:textColor="@color/text3"
+            android:textSize="14sp" />
+    </LinearLayout>
+
     <!-- Info-Leiste unten beim Umschalten -->
     <LinearLayout
         android:id="@+id/banner"

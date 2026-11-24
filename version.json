@@ -1,6 +1,6 @@
 {
-  "versionCode": 46,
-  "versionName": "2.34",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=46",
-  "notes": "• Neues Design: dunkles Farbschema, eigene abgerundete Fenster, einheitliche Markierung\n• Gruppen-Reihenfolge ändern und Länder nach vorne holen (Menü → Gruppen / Länder)\n• Eigene Sendernummern (OK lang auf Sender → Sendernummer ändern)\n• Sortierung „Nummer“ berücksichtigt eigene Nummern"
+  "versionCode": 47,
+  "versionName": "2.35",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=47",
+  "notes": "• Timeshift: Live-TV pausieren und zurückspulen (Play/Pause-Taste oder Menü → Pause)\n• Im Timeshift: ◀ 10 s zurück, ▶ 30 s vor, Zurück = wieder Live\n• Anzeige, wie weit man hinter Live ist"
 }
