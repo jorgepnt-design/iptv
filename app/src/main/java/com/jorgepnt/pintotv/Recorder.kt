@@ -25,8 +25,33 @@ object Recorder {
     private var out: FileOutputStream? = null
     private val lock = Any()
 
-    fun dir(ctx: Context): File =
-        File(ctx.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: ctx.filesDir, "Aufnahmen").apply { mkdirs() }
+    class Place(val dir: File, val label: String)
+
+    /** alle möglichen Speicherorte: interner Speicher + USB-Sticks/Festplatten/SD-Karten */
+    fun places(ctx: Context): List<Place> {
+        val out = ArrayList<Place>()
+        val dirs = ctx.getExternalFilesDirs(Environment.DIRECTORY_MOVIES).filterNotNull()
+        dirs.forEachIndexed { i, d ->
+            val removable = try { Environment.isExternalStorageRemovable(d) } catch (e: Exception) { i > 0 }
+            val label = if (!removable && i == 0) "Interner Speicher" else "USB / SD-Karte ${if (dirs.size > 2) i else ""}".trim()
+            out.add(Place(File(d, "Aufnahmen"), label))
+        }
+        if (out.isEmpty()) out.add(Place(File(ctx.filesDir, "Aufnahmen"), "Interner Speicher"))
+        return out
+    }
+
+    fun dir(ctx: Context): File {
+        val chosen = ctx.getSharedPreferences("pintotv", Context.MODE_PRIVATE).getString("recDir", null)
+        val d = chosen?.let { File(it) }?.takeIf { (it.exists() || it.mkdirs()) && it.canWrite() } ?: places(ctx).first().dir
+        d.mkdirs()
+        return d
+    }
+
+    fun setDir(ctx: Context, d: File) {
+        ctx.getSharedPreferences("pintotv", Context.MODE_PRIVATE).edit().putString("recDir", d.absolutePath).apply()
+    }
+
+    fun free(d: File): Long = try { d.mkdirs(); StatFs(d.path).availableBytes } catch (e: Exception) { 0 }
 
     fun freeBytes(ctx: Context): Long = try { StatFs(dir(ctx).path).availableBytes } catch (e: Exception) { Long.MAX_VALUE }
 
@@ -77,6 +102,9 @@ object Recorder {
         else String.format(Locale.GERMANY, "%02d:%02d", s / 60, s % 60)
     }
 
+    /** Aufnahmen von allen Speicherorten */
     fun list(ctx: Context): List<File> =
-        dir(ctx).listFiles()?.filter { it.isFile && it.extension == "ts" && !(active && it == file) }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        places(ctx).flatMap { p -> p.dir.listFiles()?.toList() ?: emptyList() }
+            .filter { it.isFile && it.extension == "ts" && !(active && it == file) }
+            .sortedByDescending { it.lastModified() }
 }

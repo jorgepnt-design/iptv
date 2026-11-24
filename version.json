@@ -1,6 +1,6 @@
 {
-  "versionCode": 31,
-  "versionName": "2.19",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=31",
-  "notes": "• Verlauf „Zuletzt gesehen“ löschen (OK lang auf die Gruppe) oder einzelne Sender entfernen"
+  "versionCode": 33,
+  "versionName": "2.21",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=33",
+  "notes": "• Aufnahme-Speicherort wählbar (intern, USB-Stick, Festplatte, SD-Karte)\n• Aufnahme-Qualität: Senderversion (SD/HD/FHD) beim Start wählen, bei HLS Qualitätsstufe begrenzen"
 }

@@ -384,7 +384,7 @@ class PlayerActivity : Activity() {
 
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
-        if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen",
+        if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
 
@@ -519,10 +519,64 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private val qualityWords = Regex("(?i)\\b(sd|hd\\+?|fhd|uhd|4k|8k|hevc|h265|raw|qhd|low|high|backup|\\d{3,4}p)\\b|[+]")
+
+    private fun baseName(n: String) = n.lowercase().replace(Regex("^[a-z]{2,3}\\s*[:|]\\s*"), "")
+        .replace(qualityWords, "").replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+    private fun recQualityLabel() = when (getSharedPreferences("pintotv", MODE_PRIVATE).getInt("recQ", 0)) {
+        1 -> "bis 1080p"; 2 -> "bis 720p"; 3 -> "SD"; else -> "Beste"
+    }
+
+    private fun chooseRecQuality(menuPos: Int) {
+        val opts = arrayOf("Beste (wie gesendet)", "Höchstens 1080p (Full HD)", "Höchstens 720p (HD)", "SD (576p) – spart am meisten Platz")
+        val sp = getSharedPreferences("pintotv", MODE_PRIVATE)
+        AlertDialog.Builder(this)
+            .setTitle("Aufnahme-Qualität")
+            .setSingleChoiceItems(opts, sp.getInt("recQ", 0)) { d, w ->
+                sp.edit().putInt("recQ", w).apply(); d.dismiss()
+                menuAdapter.items = menuItems.map { TextItem(it) }; focusAt(menuList, menuPos)
+                toast("Gilt für Sender mit mehreren Qualitätsstufen (HLS). Sonst beim Aufnehmen die Senderversion (SD/HD/FHD) wählen.")
+            }.show()
+    }
+
+    /** bei laufender Aufnahme die Qualität begrenzen (wirkt bei Streams mit mehreren Stufen) */
+    private fun applyRecQuality(on: Boolean) {
+        val q = getSharedPreferences("pintotv", MODE_PRIVATE).getInt("recQ", 0)
+        val b = player.trackSelectionParameters.buildUpon()
+        if (!on || q == 0) b.clearVideoSizeConstraints()
+        else when (q) { 1 -> b.setMaxVideoSize(1920, 1080); 2 -> b.setMaxVideoSize(1280, 720); 3 -> b.setMaxVideoSize(1024, 576) }
+        player.trackSelectionParameters = b.build()
+    }
+
+    /** gleiche Sender in anderer Qualität (z. B. RTL SD / HD+ / FHD) */
+    private fun variantsOf(c: Channel): List<Channel> {
+        val b = baseName(c.name)
+        if (b.length < 2) return listOf(c)
+        return (listOf(c) + Repo.channels.filter { it.url != c.url && baseName(it.name) == b }).distinctBy { it.url }.take(12)
+    }
+
     private fun startRecording() {
+        val c = current ?: run { toast("Kein Sender läuft"); return }
+        val variants = variantsOf(c)
+        if (variants.size > 1) {
+            AlertDialog.Builder(this)
+                .setTitle("Welche Version aufnehmen?")
+                .setItems(variants.map { (if (it.url == c.url) "● " else "    ") + it.name + "   (" + it.group + ")" }.toTypedArray()) { _, w ->
+                    val v = variants[w]
+                    if (v.url != c.url) play(v, zapList)
+                    startRecordingNow()
+                }.show()
+            return
+        }
+        startRecordingNow()
+    }
+
+    private fun startRecordingNow() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
         if (Recorder.freeBytes(this) < 1024L * 1024 * 1024) { toast("Zu wenig Speicher frei (unter 1 GB)"); return }
         Recorder.start(this, c)
+        applyRecQuality(true)
         startStream(c) // neu verbinden, damit ab jetzt mitgeschrieben wird
         findViewById<View>(R.id.recIndicator).visibility = View.VISIBLE
         ui.removeCallbacks(recTicker); ui.post(recTicker)
@@ -532,10 +586,35 @@ class PlayerActivity : Activity() {
     private fun stopRecording() {
         val name = Recorder.channelName
         val f = Recorder.stop()
+        applyRecQuality(false)
         ui.removeCallbacks(recTicker)
         findViewById<View>(R.id.recIndicator).visibility = View.GONE
         if (f != null) toast("Aufnahme gespeichert: $name (${mb(f.length())}) – Menü → Aufnahmen")
         else toast("Aufnahme beendet – es kamen keine Daten an (${mb(Recorder.bytes)}), nichts gespeichert")
+    }
+
+    private fun chooseRecordDir() {
+        val places = Recorder.places(this)
+        val cur = Recorder.dir(this).absolutePath
+        val labels = places.map { p ->
+            (if (p.dir.absolutePath == cur) "● " else "    ") + p.label + "   ·   frei: " + mb(Recorder.free(p.dir))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Aufnahmen speichern auf …")
+            .setItems(labels.toTypedArray()) { _, w ->
+                val p = places[w]
+                if (!p.dir.exists() && !p.dir.mkdirs() || !p.dir.canWrite()) { toast("${p.label} ist nicht beschreibbar"); return@setItems }
+                Recorder.setDir(this, p.dir)
+                toast("Neue Aufnahmen werden auf „${p.label}“ gespeichert")
+            }
+            .setNeutralButton("Hinweis USB") { _, _ ->
+                AlertDialog.Builder(this).setTitle("USB-Stick / Festplatte")
+                    .setMessage("Steck den Stick an die Shield und richte ihn als „Wechselspeicher“ (nicht als internen Speicher) ein. Er erscheint dann hier.\n\n" +
+                        "Die Aufnahmen liegen auf dem Stick im Ordner Android/data/com.jorgepnt.pintotv/files/Movies/Aufnahmen – am PC als .ts-Dateien abspielbar (z. B. mit VLC).\n\n" +
+                        "Achtung: Deinstallierst du PintoTV, löscht Android auch diesen Ordner.")
+                    .setPositiveButton("OK", null).show()
+            }
+            .show()
     }
 
     private fun showRecordings() {
@@ -543,7 +622,7 @@ class PlayerActivity : Activity() {
         if (files.isEmpty()) { toast("Noch keine Aufnahmen"); return }
         val fmt = java.text.SimpleDateFormat("dd.MM. HH:mm", java.util.Locale.GERMANY)
         AlertDialog.Builder(this)
-            .setTitle("Aufnahmen (${files.size})  ·  frei: ${mb(Recorder.freeBytes(this))}")
+            .setTitle("Aufnahmen (${files.size})  ·  frei am Speicherort: ${mb(Recorder.freeBytes(this))}")
             .setItems(files.map { "${it.nameWithoutExtension.substringBeforeLast('_').substringBeforeLast('_')}  ·  ${fmt.format(java.util.Date(it.lastModified()))}  ·  ${mb(it.length())}" }.toTypedArray()) { _, w ->
                 val f = files[w]
                 AlertDialog.Builder(this).setTitle(f.nameWithoutExtension)
@@ -993,6 +1072,8 @@ class PlayerActivity : Activity() {
             item == "● Aufnahme starten" -> { hideOverlay(); startRecording() }
             item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
             item == "Aufnahmen" -> showRecordings()
+            item == "Aufnahme-Speicherort" -> chooseRecordDir()
+            item.startsWith("Aufnahme-Qualität") -> chooseRecQuality(i)
             item == "Beenden" -> finish()
         }
     }
