@@ -40,7 +40,8 @@ object Players {
                 .setReadTimeoutMs(10000)
                 .createDataSource()
             // bei laufender Aufnahme die empfangenen Daten zusätzlich in die Datei schreiben
-            if (recordable && Recorder.active) androidx.media3.datasource.TeeDataSource(src, Recorder.sink()) else src
+            // immer eingehängt: schreibt nur, solange eine Aufnahme läuft (prüft bei jedem neuen Stück)
+            if (recordable) androidx.media3.datasource.TeeDataSource(src, Recorder.sink()) else src
         }
         val extractors = DefaultExtractorsFactory().setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS

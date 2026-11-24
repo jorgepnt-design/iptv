@@ -1,6 +1,6 @@
 {
-  "versionCode": 39,
-  "versionName": "2.27",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=39",
-  "notes": "• Aufnahme bei HLS-Sendern ohne Neuverbinden (keine doppelte Verbindung zum Anbieter)\n• Hängende Verbindungen werden schneller abgebrochen und neu aufgebaut"
+  "versionCode": 40,
+  "versionName": "2.28",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=40",
+  "notes": "• Aufnahme bei HLS-Sendern schreibt wieder Daten (ohne Neuverbinden)\n• Wächter: erkennt Hänger der Bedienung und zeigt die genaue Stelle beim nächsten Start"
 }

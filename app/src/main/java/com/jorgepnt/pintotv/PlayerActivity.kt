@@ -110,7 +110,8 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.loadVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.versionTag).text = "PintoTV $v"
 
-        (App.takeCrash(this) ?: App.lastExitProblem(this))?.let { report ->
+        val hang = App.takeHang(this)
+        (listOfNotNull(App.takeCrash(this) ?: App.lastExitProblem(this), hang).joinToString("\n\n=== Wächter ===\n").ifBlank { null })?.let { report ->
             AlertDialog.Builder(this)
                 .setTitle("PintoTV ist abgestürzt – bitte Foto davon schicken")
                 .setMessage(report)
@@ -605,7 +606,11 @@ class PlayerActivity : Activity() {
         val isHls = c.url.contains(".m3u8", true) ||
             player.currentMediaItem?.localConfiguration?.mimeType == androidx.media3.common.MimeTypes.APPLICATION_M3U8 ||
             player.currentManifest is androidx.media3.exoplayer.hls.HlsManifest
-        if (!isHls) startStream(c)
+        if (!isHls) {
+            // durchgehender Stream: erst sauber trennen, dann neu verbinden (nie zwei Verbindungen gleichzeitig)
+            player.stop()
+            ui.postDelayed({ if (current?.url == c.url) startStream(c) }, 1200)
+        }
         findViewById<View>(R.id.recIndicator).visibility = View.VISIBLE
         ui.removeCallbacks(recTicker); ui.post(recTicker)
         toast("● Aufnahme von „${c.name}“ läuft")

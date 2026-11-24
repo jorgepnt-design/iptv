@@ -17,6 +17,38 @@ class App : Application() {
             } catch (_: Throwable) { }
             prev?.uncaughtException(t, e)
         }
+        startWatchdog()
+    }
+
+    /** Wächter: merkt, wenn die Bedienung (Hauptablauf) länger als 2 s hängt, und speichert die Stelle */
+    private fun startWatchdog() {
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        Thread({
+            var lastSaved = 0L
+            while (true) {
+                val tick = java.util.concurrent.atomic.AtomicBoolean(false)
+                main.post { tick.set(true) }
+                Thread.sleep(2000)
+                if (!tick.get()) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastSaved > 20_000) {
+                        lastSaved = now
+                        try {
+                            val st = android.os.Looper.getMainLooper().thread.stackTrace
+                            val lines = st.map { it.toString() }
+                            val mine = lines.filter { it.contains("pintotv") }.take(8)
+                            val top = lines.take(10)
+                            val txt = "${appVersion(this)} · Bedienung hing > 2 s\n" +
+                                (if (mine.isNotEmpty()) mine.joinToString("\n") + "\n—\n" else "") + top.joinToString("\n")
+                            java.io.File(filesDir, "hang.txt").writeText(txt)
+                        } catch (_: Throwable) { }
+                    }
+                    // warten bis der Hauptablauf wieder reagiert
+                    while (!tick.get()) Thread.sleep(200)
+                }
+                Thread.sleep(500)
+            }
+        }, "PintoTV-Waechter").apply { isDaemon = true; start() }
     }
 
     companion object {
@@ -67,6 +99,12 @@ class App : Application() {
                 } catch (_: Throwable) { }
                 text.trim()
             } catch (e: Throwable) { null }
+        }
+
+        fun takeHang(app: android.content.Context): String? {
+            val f = File(app.filesDir, "hang.txt")
+            if (!f.exists()) return null
+            val s = f.readText(); f.delete(); return s
         }
 
         fun takeCrash(app: android.content.Context): String? {
