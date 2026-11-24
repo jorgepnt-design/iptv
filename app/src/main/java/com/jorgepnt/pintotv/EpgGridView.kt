@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.text.TextUtils
 import android.text.TextPaint
 import android.util.AttributeSet
+import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -133,17 +134,49 @@ class EpgGridView(ctx: Context, attrs: AttributeSet?) : View(ctx, attrs) {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.action == MotionEvent.ACTION_UP && channels.isNotEmpty() && e.y > headerH) {
+    private var scrollY = 0f
+    private val gestures = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent) = true
+
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (channels.isEmpty() || e.y < headerH) return true
             val row = firstRow + ((e.y - headerH) / rowH).toInt()
-            if (row < channels.size) {
-                if (row == selRow && e.x < leftW) { onPlay?.invoke(channels[row]); return true }
-                selRow = row
-                if (e.x > leftW) selTime = winStart + ((e.x - leftW) / pxPerMs()).toLong()
-                moved()
+            if (row >= channels.size) return true
+            if (row == selRow && e.x < leftW) { onPlay?.invoke(channels[row]); return true }
+            selRow = row
+            if (e.x > leftW) selTime = winStart + ((e.x - leftW) / pxPerMs()).toLong()
+            notifySel(); invalidate()
+            return true
+        }
+
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (channels.isNotEmpty() && e.y > headerH) {
+                val row = firstRow + ((e.y - headerH) / rowH).toInt()
+                if (row < channels.size) onPlay?.invoke(channels[row])
             }
             return true
         }
+
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (channels.isEmpty()) return true
+            scrollY += dy
+            val rows = (scrollY / rowH).toInt()
+            if (rows != 0) {
+                scrollY -= rows * rowH
+                firstRow = (firstRow + rows).coerceIn(0, (channels.size - visibleRows()).coerceAtLeast(0))
+            }
+            if (Math.abs(dx) > Math.abs(dy)) {
+                val now = System.currentTimeMillis()
+                winStart = (winStart + (dx / pxPerMs()).toLong())
+                    .coerceIn(now - 12 * 3600_000L, now + 4 * 24 * 3600_000L)
+            }
+            invalidate()
+            return true
+        }
+    })
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        gestures.onTouchEvent(e)
         return true
     }
 

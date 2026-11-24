@@ -11,6 +11,13 @@ Eigener IPTV-Player im Stil von TiviMate, optimiert für die Fernbedienung (Fire
 - Info-Leiste beim Umschalten, automatische Wiederverbindung bei Abbrüchen
 - Stream-Format für Xtream umschaltbar (TS / HLS)
 
+## Installieren
+Direkter Download der aktuellen APK:
+**https://github.com/jorgepnt-design/iptv/raw/main/PintoTV.apk**
+
+Fire TV / Shield: App **Downloader** installieren, diese Adresse eingeben, herunterladen, installieren.
+Handy: Link im Browser öffnen und die APK installieren (Touch: Tippen = Kanalliste, Wischen hoch/runter = umschalten, lang drücken = Menü).
+
 ## Bedienung
 | Taste | Vollbild | Kanalliste |
 |---|---|---|

@@ -85,6 +85,12 @@ class MultiViewActivity : Activity() {
             frame.addView(hint, FrameLayout.LayoutParams(-1, -1))
             frame.addView(label, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(16, 16, 16, 16) })
             frame.foreground = getDrawable(R.drawable.tile_normal)
+            // Touch: Fenster antippen = auswählen (Ton), nochmal antippen = Sender wählen, lang = Optionen
+            frame.setOnClickListener {
+                if (sel != index) { sel = index; highlight() }
+                else if (channel == null) pickGroup() else tileMenu()
+            }
+            frame.setOnLongClickListener { sel = index; highlight(); tileMenu(); true }
         }
 
         fun set(c: Channel?) {
@@ -149,7 +155,7 @@ class MultiViewActivity : Activity() {
             setTextColor(Color.WHITE); textSize = 15f
             setBackgroundResource(R.drawable.label_bg)
             setPadding(24, 10, 24, 10)
-            text = "Multi-View  ·  Pfeile: Fenster wählen (Ton folgt)  ·  OK: Sender  ·  Menü: 2 / 4 Fenster  ·  Zurück: Ende"
+            text = "Multi-View  ·  Fenster wählen = Ton  ·  OK/Antippen: Sender  ·  Menü/lang drücken: 2 oder 4 Fenster  ·  Zurück: Ende"
         }
         root.addView(info, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = 20 })
         info.postDelayed({ info.visibility = View.GONE }, 6000)
@@ -219,18 +225,19 @@ class MultiViewActivity : Activity() {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if (list[sel].channel == null) pickGroup() else tileMenu(); return true
             }
-            KeyEvent.KEYCODE_MENU -> {
-                four = !four
-                applyLayout()
-                if (four) list.drop(2).forEach { it.start() }
-                highlight()
-                toast(if (four) "4 Fenster" else "2 Fenster")
-                return true
-            }
+            KeyEvent.KEYCODE_MENU -> { toggleLayout(); return true }
             KeyEvent.KEYCODE_CHANNEL_UP -> { zapTile(1); return true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { zapTile(-1); return true }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun toggleLayout() {
+        four = !four
+        applyLayout()
+        if (four) list.drop(2).forEach { if (it.channel != null) it.start() else it.set(null) }
+        highlight()
+        toast(if (four) "4 Fenster" else "2 Fenster")
     }
 
     private fun zapTile(step: Int) {
@@ -244,11 +251,12 @@ class MultiViewActivity : Activity() {
         val c = list[sel].channel ?: return
         AlertDialog.Builder(this)
             .setTitle(c.name)
-            .setItems(arrayOf("Sender wechseln", "Im Vollbild ansehen", "Fenster leeren")) { _, w ->
+            .setItems(arrayOf("Sender wechseln", "Im Vollbild ansehen", "Fenster leeren", if (four) "Auf 2 Fenster umschalten" else "Auf 4 Fenster umschalten")) { _, w ->
                 when (w) {
                     0 -> pickGroup()
                     1 -> { setResult(RESULT_OK, Intent().putExtra("url", c.url)); finish() }
                     2 -> list[sel].set(null)
+                    3 -> toggleLayout()
                 }
             }.show()
     }

@@ -6,7 +6,9 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.GestureDetector
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -97,6 +99,7 @@ class PlayerActivity : Activity() {
 
         initPlayer()
         initLists()
+        initTouch()
 
         if (store.playlists().isEmpty()) {
             showStatus("Willkommen bei PintoTV!\nBitte zuerst eine Playlist hinzufügen.")
@@ -139,6 +142,33 @@ class PlayerActivity : Activity() {
                 play(ch, channelsOf(viewingGroup))
             }
         }
+    }
+
+    // ---------- Touch (Handy/Tablet) ----------
+
+    private val isTouchDevice by lazy {
+        packageManager.hasSystemFeature("android.hardware.touchscreen") &&
+            !packageManager.hasSystemFeature("android.software.leanback")
+    }
+
+    private fun initTouch() {
+        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { showOverlay(); return true }
+            override fun onDoubleTap(e: MotionEvent): Boolean { showBanner(); return true }
+            override fun onLongPress(e: MotionEvent) { showOverlay("menu") }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                val dx = e2.x - (e1?.x ?: e2.x)
+                val dy = e2.y - (e1?.y ?: e2.y)
+                if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 80) { zap(if (dy < 0) 1 else -1); return true }
+                if (dx > 120) { showOverlay("groups"); return true }
+                return false
+            }
+        })
+        playerView.setOnTouchListener { _, ev -> gd.onTouchEvent(ev) }
+        // Tippen neben die Listen schließt die Kanalliste
+        overlay.isClickable = true
+        overlay.setOnClickListener { hideOverlay() }
     }
 
     // ---------- Player ----------
@@ -268,7 +298,7 @@ class PlayerActivity : Activity() {
 
         groupAdapter = TextAdapter(
             onFocus = { pos -> groupKeys.getOrNull(pos)?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
-            onClick = { focusChannel(-1) }
+            onClick = { pos -> groupKeys.getOrNull(pos)?.let { showGroup(it) }; focusChannel(-1) }
         )
         groupList.layoutManager = LinearLayoutManager(this)
         groupList.adapter = groupAdapter
@@ -319,6 +349,15 @@ class PlayerActivity : Activity() {
         channelAdapter.playingUrl = current?.url
         overlay.visibility = View.VISIBLE
         updateClock()
+        if (isTouchDevice) {
+            findViewById<View>(R.id.detailPane).visibility = View.GONE
+            channelList.layoutParams = (channelList.layoutParams as android.widget.LinearLayout.LayoutParams).apply { width = 0; weight = 1f }
+            menuAdapter.items = menuItems.map { TextItem(it) }
+            menuPane.visibility = View.VISIBLE
+            current?.let { showDetails(it) }
+            armOverlayTimer()
+            return
+        }
         when (focus) {
             "menu" -> showMenu()
             "groups" -> { menuPane.visibility = View.GONE; focusGroup() }
