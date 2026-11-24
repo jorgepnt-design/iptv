@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="false"
+        app:use_controller="false"
+        app:show_buffering="always"
+        app:resize_mode="fit" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="#CC000000"
+        android:gravity="center"
+        android:padding="20dp"
+        android:textColor="#FFF"
+        android:textSize="20sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/numberEntry"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="32dp"
+        android:background="#CC000000"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="8dp"
+        android:textColor="#FFF"
+        android:textSize="48sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Info-Leiste unten beim Umschalten -->
+    <LinearLayout
+        android:id="@+id/banner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/banner_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="40dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="28dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/bannerNumber"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="64dp"
+            android:textColor="#FFF"
+            android:textSize="34sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:id="@+id/bannerLogo"
+            android:layout_width="110dp"
+            android:layout_height="64dp"
+            android:layout_marginHorizontal="16dp"
+            android:scaleType="fitCenter" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/bannerName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#FFF"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/bannerNow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#E6FFFFFF"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/bannerProgress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginVertical="6dp"
+                android:max="1000"
+                android:progressDrawable="@drawable/progress" />
+
+            <TextView
+                android:id="@+id/bannerNext"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#99FFFFFF"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/bannerClock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:layout_marginStart="24dp"
+            android:textColor="#FFF"
+            android:textSize="26sp" />
+    </LinearLayout>
+
+    <!-- Kanalliste (TiviMate-Stil): Menü | Gruppen | Kanäle | Details -->
+    <LinearLayout
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/overlay_bg"
+        android:orientation="horizontal"
+        android:paddingVertical="24dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/menuPane"
+            android:layout_width="190dp"
+            android:layout_height="match_parent"
+            android:background="#E6000000"
+            android:orientation="vertical"
+            android:paddingHorizontal="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:text="@string/app_name"
+                android:textColor="#3D7BFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/menuList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/groupList"
+            android:layout_width="230dp"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="8dp"
+            android:clipToPadding="false" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/channelList"
+            android:layout_width="390dp"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="8dp"
+            android:clipToPadding="false" />
+
+        <LinearLayout
+            android:id="@+id/detailPane"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:id="@+id/clock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="#FFF"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/detailChannel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="#3D7BFF"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/detailTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="#FFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/detailTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#B3FFFFFF"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/detailDesc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:ellipsize="end"
+                android:maxLines="9"
+                android:textColor="#D9FFFFFF"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/detailNext"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:textColor="#99FFFFFF"
+                android:textSize="15sp" />
+
+            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="OK: abspielen · OK lang drücken: Favorit · ← Gruppen/Menü"
+                android:textColor="#80FFFFFF"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
