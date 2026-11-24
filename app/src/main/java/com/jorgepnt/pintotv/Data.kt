@@ -87,6 +87,49 @@ object Countries {
 class Store(ctx: Context) {
     private val sp = ctx.getSharedPreferences("pintotv", Context.MODE_PRIVATE)
 
+    /** komplette Sicherung aller Einstellungen als JSON */
+    fun exportJson(): String {
+        val prefs = JSONObject()
+        sp.all.forEach { (k, v) ->
+            when (v) {
+                is String -> prefs.put(k, JSONObject().put("t", "s").put("v", v))
+                is Boolean -> prefs.put(k, JSONObject().put("t", "b").put("v", v))
+                is Int -> prefs.put(k, JSONObject().put("t", "i").put("v", v))
+                is Long -> prefs.put(k, JSONObject().put("t", "l").put("v", v))
+                is Float -> prefs.put(k, JSONObject().put("t", "f").put("v", v.toDouble()))
+                is Set<*> -> prefs.put(k, JSONObject().put("t", "set").put("v", JSONArray(v.map { it.toString() })))
+            }
+        }
+        return JSONObject().put("pintotv", 1).put("created", System.currentTimeMillis())
+            .put("device", android.os.Build.MODEL).put("prefs", prefs).toString()
+    }
+
+    /** kurze Beschreibung einer Sicherung für die Rückfrage */
+    fun describe(json: String): String = try {
+        val prefs = JSONObject(json).getJSONObject("prefs")
+        val pl = prefs.optJSONObject("playlists")?.optString("v")?.let { JSONArray(it).length() } ?: 0
+        val fl = prefs.optJSONObject("favlists")?.optString("v")?.let { JSONArray(it) }
+        val favs = fl?.let { a -> (0 until a.length()).sumOf { a.getJSONObject(it).getJSONArray("k").length() } } ?: 0
+        "$pl Playlist${if (pl == 1) "" else "s"}, ${fl?.length() ?: 1} Favoritenliste(n) mit $favs Sendern, Gruppen-/Länderauswahl und Einstellungen"
+    } catch (e: Exception) { "Einstellungen" }
+
+    fun importJson(json: String) {
+        val prefs = JSONObject(json).getJSONObject("prefs")
+        val e = sp.edit().clear()
+        prefs.keys().forEach { k ->
+            val o = prefs.getJSONObject(k)
+            when (o.getString("t")) {
+                "s" -> e.putString(k, o.getString("v"))
+                "b" -> e.putBoolean(k, o.getBoolean("v"))
+                "i" -> e.putInt(k, o.getInt("v"))
+                "l" -> e.putLong(k, o.getLong("v"))
+                "f" -> e.putFloat(k, o.getDouble("v").toFloat())
+                "set" -> { val a = o.getJSONArray("v"); e.putStringSet(k, (0 until a.length()).map { a.getString(it) }.toSet()) }
+            }
+        }
+        e.commit()
+    }
+
     fun playlists(): List<Playlist> {
         val a = JSONArray(sp.getString("playlists", "[]"))
         return (0 until a.length()).map { Playlist.fromJson(a.getJSONObject(it)) }

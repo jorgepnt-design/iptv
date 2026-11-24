@@ -95,6 +95,18 @@
             android:textAllCaps="false"
             android:textColor="#FF8A8A"
             android:textSize="17sp" />
+
+        <Button
+            android:id="@+id/transferPl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:background="@drawable/button_bg"
+            android:paddingHorizontal="24dp"
+            android:text="⇄ Übertragen"
+            android:textAllCaps="false"
+            android:textColor="#FFF"
+            android:textSize="17sp" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

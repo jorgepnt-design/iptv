@@ -11,8 +11,8 @@ android {
         applicationId = "com.jorgepnt.pintotv"
         minSdk = 22
         targetSdk = 35
-        versionCode = 15
-        versionName = "2.3"
+        versionCode = 16
+        versionName = "2.4"
     }
 
     signingConfigs {
@@ -49,4 +49,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation("org.json:json:20240303")
 }
