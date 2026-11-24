@@ -245,9 +245,16 @@ class PlayerActivity : Activity() {
         store.addRecent(pid, c.url)
         store.lastGroup = playingGroup
         startStream(c)
+        // nur die zwei betroffenen Zeilen aktualisieren – die Liste nicht neu aufbauen (sonst springt die Markierung)
+        val oldIdx = channelAdapter.indexOf(channelAdapter.playingUrl)
         channelAdapter.playingUrl = c.url
-        // erst nach dem Klick neu zeichnen (nicht mitten in der Fokus-Verarbeitung)
-        channelList.post { try { channelAdapter.notifyDataSetChanged() } catch (e: Exception) { } }
+        val newIdx = channelAdapter.indexOf(c.url)
+        channelList.post {
+            try {
+                if (oldIdx >= 0) channelAdapter.notifyItemChanged(oldIdx)
+                if (newIdx >= 0 && newIdx != oldIdx) channelAdapter.notifyItemChanged(newIdx)
+            } catch (e: Exception) { }
+        }
         showBanner()
     }
 
@@ -322,7 +329,8 @@ class PlayerActivity : Activity() {
                     }
                 }
                 chip.visibility = View.GONE
-                channelAdapter.notifyDataSetChanged()
+                // Zeilen an Ort und Stelle aktualisieren, ohne die Markierung zu verlieren
+                channelList.post { try { channelAdapter.notifyItemRangeChanged(0, channelAdapter.itemCount) } catch (e: Exception) { } }
                 if (banner.visibility == View.VISIBLE) showBanner()
                 if (force) toast("TV-Programm aktualisiert")
             } catch (e: Throwable) {
@@ -395,12 +403,9 @@ class PlayerActivity : Activity() {
         channelAdapter = ChannelAdapter(
             onFocus = { showDetails(it) },
             onClick = { c ->
-                if (c.url == current?.url && !isTouchDevice) hideOverlay() // zweites OK = Vollbild
-                else {
-                    playingGroup = viewingGroup
-                    play(c, channelAdapter.items)
-                    if (isTouchDevice) hideOverlay() else { showDetails(c); armOverlayTimer() }
-                }
+                // OK = Sender sofort im Vollbild (wie TiviMate)
+                if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
+                hideOverlay()
             },
             onLongClick = { c -> channelOptions(c) }
         )

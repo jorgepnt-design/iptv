@@ -329,7 +329,7 @@
                 android:id="@+id/hint"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="OK: Vorschau · nochmal OK: Vollbild · OK lang: Favorit/Multi-View · ← Gruppen/Menü"
+                android:text="OK: ansehen · OK lang: Favoriten / Multi-View · ← Gruppen / Menü"
                 android:textColor="#80FFFFFF"
                 android:textSize="13sp" />
         </LinearLayout>
