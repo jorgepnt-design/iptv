@@ -36,7 +36,7 @@ class PlaylistActivity : Activity() {
         list = findViewById(R.id.plList)
         findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}"
         adapter = TextAdapter(
-            onFocus = { pos -> marked = pos; adapter.activePos = pos },
+            onFocus = { pos -> marked = pos; list.post { adapter.activePos = pos } },
             onClick = { pos -> select(store.playlists()[pos]) },
             onLongClick = { pos -> options(store.playlists()[pos]) }
         )

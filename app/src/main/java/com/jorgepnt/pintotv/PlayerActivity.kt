@@ -185,6 +185,7 @@ class PlayerActivity : Activity() {
         // Tippen neben die Listen schließt die Kanalliste
         overlay.isClickable = true
         overlay.setOnClickListener { hideOverlay() }
+        overlay.isFocusable = false
     }
 
     // ---------- Player ----------
@@ -316,19 +317,26 @@ class PlayerActivity : Activity() {
     }
 
     private var hidden: Set<String> = emptySet()
+    /** Gruppenname in der Liste → Name der Favoritenliste */
+    private var favGroups: Map<String, String> = emptyMap()
     private var visible: List<Channel> = emptyList()
 
     private fun buildGroups() {
         val pid = playlist?.id ?: return
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
-        groupKeys = listOf(G_FAV, G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
+        groupKeys = favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
         playlist?.id ?: return emptyList()
         return when (g) {
-            G_FAV -> store.favorites().let { f -> Repo.channels.filter { favKey(it) in f }.distinctBy { favKey(it) } }
+            in favGroups.keys -> {
+                val keys = store.favLists().firstOrNull { it.name == favGroups[g] }?.keys ?: emptySet<String>()
+                val byKey = Repo.channels.groupBy { favKey(it) }
+                keys.mapNotNull { byKey[it]?.firstOrNull() }.sortedBy { it.number }
+            }
             G_RECENT -> { val m = Repo.channels.associateBy { it.url }; store.recents(playlist!!.id).mapNotNull { m[it] } }
             G_ALL -> visible
             searchKey -> searchResults
@@ -339,7 +347,7 @@ class PlayerActivity : Activity() {
     // ---------- Listen / Overlay ----------
 
     private val menuItems get() = listOf(
-        "TV-Guide", "Multi-View", "Suche", "Gruppen / Länder", "Playlists", "Aktualisieren",
+        "TV-Guide", "Multi-View", "Suche", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Beenden"
     )
 
@@ -380,20 +388,12 @@ class PlayerActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("${c.number}  ${c.name}")
             .setItems(arrayOf(
-                if (fav) "Aus Favoriten entfernen" else "★ Zu Favoriten hinzufügen",
+                if (fav) "★ Favoritenlisten bearbeiten …" else "★ Zu Favoriten hinzufügen …",
                 "In Multi-View öffnen",
                 "Abspielen"
             )) { _, w ->
                 when (w) {
-                    0 -> {
-                        val added = store.toggleFavorite(c)
-                        toast(if (added) "★ ${c.name} zu Favoriten hinzugefügt" else "${c.name} aus Favoriten entfernt")
-                        channelAdapter.favorites = store.favorites()
-                        if (viewingGroup == G_FAV) channelAdapter.items = channelsOf(G_FAV)
-                        else channelAdapter.indexOf(c.url).let { if (it >= 0) channelAdapter.notifyItemChanged(it) }
-                        refreshGroupCounts()
-                        focusChannel(channelAdapter.indexOf(c.url).coerceAtLeast(0))
-                    }
+                    0 -> chooseFavLists(c)
                     1 -> {
                         val tiles = MultiViewActivity.tiles
                         val srcs = MultiViewActivity.sources
@@ -407,6 +407,101 @@ class PlayerActivity : Activity() {
                     }
                     2 -> { playingGroup = viewingGroup; play(c, channelAdapter.items); hideOverlay() }
                 }
+            }.show()
+    }
+
+    // ---------- Favoritenlisten ----------
+
+    /** Sender in Favoritenlisten aufnehmen/entfernen (Haken je Liste) */
+    private fun chooseFavLists(c: Channel) {
+        val lists = store.favLists()
+        val k = favKey(c)
+        val checked = BooleanArray(lists.size) { k in lists[it].keys }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("„${c.name}“ in Favoritenlisten")
+            .setMultiChoiceItems(lists.map { "★ ${it.name}  (${it.keys.size})" }.toTypedArray(), checked) { _, i, on -> checked[i] = on }
+            .setPositiveButton("Übernehmen") { _, _ ->
+                lists.forEachIndexed { i, l -> if (checked[i]) l.keys.add(k) else l.keys.remove(k) }
+                store.saveFavLists(lists)
+                val n = checked.count { it }
+                toast(if (n == 0) "${c.name} aus allen Favoriten entfernt" else "★ ${c.name} in $n Liste${if (n == 1) "" else "n"}")
+                afterFavChange(c)
+            }
+            .setNeutralButton("+ Neue Liste") { _, _ -> newFavList { name ->
+                val l = store.favLists(); l.firstOrNull { it.name == name }?.keys?.add(k); store.saveFavLists(l)
+                toast("★ ${c.name} in „$name“"); afterFavChange(c)
+            } }
+            .setNegativeButton("Abbrechen", null)
+            .create()
+        dlg.show()
+    }
+
+    private fun afterFavChange(c: Channel?) {
+        channelAdapter.favorites = store.favorites()
+        val oldView = viewingGroup
+        buildGroups()
+        if (viewingGroup !in groupKeys) viewingGroup = groupKeys.first()
+        if (playingGroup !in groupKeys) playingGroup = G_ALL
+        refreshGroupCounts()
+        channelAdapter.items = channelsOf(viewingGroup)
+        if (overlay.visibility == View.VISIBLE) {
+            if (c != null && oldView == viewingGroup && channelAdapter.indexOf(c.url) >= 0) focusChannel(channelAdapter.indexOf(c.url))
+            else focusGroup()
+        }
+    }
+
+    private fun newFavList(then: (String) -> Unit) {
+        val input = EditText(this).apply { hint = "Name, z. B. Sport, Kinder, Portugal"; isSingleLine = true }
+        AlertDialog.Builder(this)
+            .setTitle("Neue Favoritenliste")
+            .setView(input)
+            .setPositiveButton("Anlegen") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) return@setPositiveButton
+                val l = store.favLists()
+                if (l.any { it.name.equals(name, true) }) { toast("Liste „$name“ gibt es schon"); return@setPositiveButton }
+                l.add(Store.FavList(name, mutableSetOf()))
+                store.saveFavLists(l)
+                then(name)
+            }
+            .setNegativeButton("Abbrechen", null).show()
+    }
+
+    private fun manageFavLists() {
+        val lists = store.favLists()
+        val labels = lists.map { "★ ${it.name}  (${it.keys.size} Sender)" } + "+ Neue Liste anlegen"
+        AlertDialog.Builder(this)
+            .setTitle("Favoritenlisten")
+            .setItems(labels.toTypedArray()) { _, w ->
+                if (w == lists.size) { newFavList { toast("Liste „$it“ angelegt"); afterFavChange(null) }; return@setItems }
+                val fl = lists[w]
+                AlertDialog.Builder(this)
+                    .setTitle("★ ${fl.name}")
+                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen")) { _, a ->
+                        val all = store.favLists()
+                        val i = all.indexOfFirst { it.name == fl.name }
+                        if (i < 0) return@setItems
+                        when (a) {
+                            0 -> {
+                                val input = EditText(this).apply { setText(fl.name); isSingleLine = true }
+                                AlertDialog.Builder(this).setTitle("Umbenennen").setView(input)
+                                    .setPositiveButton("Speichern") { _, _ ->
+                                        val n = input.text.toString().trim()
+                                        if (n.isNotEmpty() && all.none { it.name.equals(n, true) && it !== all[i] }) {
+                                            all[i] = Store.FavList(n, all[i].keys); store.saveFavLists(all); afterFavChange(null)
+                                        }
+                                    }.setNegativeButton("Abbrechen", null).show()
+                            }
+                            1 -> if (i > 0) { all.add(i - 1, all.removeAt(i)); store.saveFavLists(all); afterFavChange(null) }
+                            2 -> { all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert") }
+                            3 -> {
+                                if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); return@setItems }
+                                AlertDialog.Builder(this).setTitle("Liste „${fl.name}“ löschen?")
+                                    .setPositiveButton("Löschen") { _, _ -> all.removeAt(i); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ gelöscht") }
+                                    .setNegativeButton("Abbrechen", null).show()
+                            }
+                        }
+                    }.show()
             }.show()
     }
 
@@ -426,22 +521,38 @@ class PlayerActivity : Activity() {
             }.show()
     }
 
-    /** Mehrfachauswahl mit „Alle an/aus“-Knopf, der den Dialog nicht schließt */
+    /** Mehrfachauswahl – Knöpfe stehen OBEN, damit man nicht durch die ganze Liste scrollen muss */
     private fun multiChoice(title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) {
-        val dlg = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
-            .setPositiveButton("Übernehmen") { _, _ -> onApply() }
-            .setNeutralButton("Alle an/aus", null)
-            .setNegativeButton("Abbrechen", null)
-            .create()
-        dlg.setOnShowListener {
-            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                val target = !checked.all { it }
-                for (i in checked.indices) { checked[i] = target; dlg.listView.setItemChecked(i, target) }
-                toast(if (target) "Alle ausgewählt" else "Alle abgewählt")
-            }
+        val d = resources.displayMetrics.density
+        val head = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((24 * d).toInt(), (18 * d).toInt(), (24 * d).toInt(), (8 * d).toInt())
         }
+        head.addView(TextView(this).apply { text = title; textSize = 20f; setTextColor(android.graphics.Color.WHITE) })
+        val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
+        fun btn(t: String) = android.widget.Button(this).apply {
+            text = t; isAllCaps = false; textSize = 15f
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundResource(R.drawable.button_bg)
+            setPadding((16 * d).toInt(), 0, (16 * d).toInt(), 0)
+            layoutParams = android.widget.LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (10 * d).toInt() }
+        }
+        val bApply = btn("✓ Übernehmen"); val bAll = btn("Alle an"); val bNone = btn("Alle aus"); val bCancel = btn("Abbrechen")
+        listOf(bApply, bAll, bNone, bCancel).forEach { row.addView(it) }
+        head.addView(row)
+        val dlg = AlertDialog.Builder(this)
+            .setCustomTitle(head)
+            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+            .create()
+        fun setAll(on: Boolean) {
+            for (i in checked.indices) { checked[i] = on; dlg.listView.setItemChecked(i, on) }
+            toast(if (on) "Alle ausgewählt" else "Alle abgewählt")
+        }
+        bAll.setOnClickListener { setAll(true) }
+        bNone.setOnClickListener { setAll(false) }
+        bCancel.setOnClickListener { dlg.dismiss() }
+        bApply.setOnClickListener { dlg.dismiss(); onApply() }
+        dlg.setOnShowListener { bApply.requestFocus() }
         dlg.show()
     }
 
@@ -621,21 +732,23 @@ class PlayerActivity : Activity() {
     }
 
     private fun onMenu(i: Int) {
-        when (i) {
-            0 -> openGuide()
-            1 -> openMulti()
-            2 -> search()
-            3 -> manageGroups()
-            4 -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
-            5 -> { hideOverlay(); load(true) }
-            6 -> {
+        val item = menuItems.getOrNull(i) ?: return
+        when {
+            item == "TV-Guide" -> openGuide()
+            item == "Multi-View" -> openMulti()
+            item == "Suche" -> search()
+            item == "Favoritenlisten" -> manageFavLists()
+            item == "Gruppen / Länder" -> manageGroups()
+            item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
+            item == "Aktualisieren" -> { hideOverlay(); load(true) }
+            item.startsWith("Stream-Format") -> {
                 store.streamFormat = if (store.streamFormat == "ts") "m3u8" else "ts"
                 menuAdapter.items = menuItems.map { TextItem(it) }
-                focusAt(menuList, 6)
+                focusAt(menuList, i)
                 if (playlist?.type == "xtream") { hideOverlay(); load(true) }
                 else toast("Gilt nur für Xtream-Codes-Playlists")
             }
-            7 -> finish()
+            item == "Beenden" -> finish()
         }
     }
 

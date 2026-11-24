@@ -102,6 +102,9 @@ class MultiViewActivity : Activity() {
                 else if (channel == null) pickGroup() else tileMenu()
             }
             frame.setOnLongClickListener { sel = index; highlight(); tileMenu(); true }
+            // nur für Touch – auf der Fernbedienung steuert die Activity die Auswahl
+            frame.isFocusable = false
+            frame.isFocusableInTouchMode = false
         }
 
         fun set(c: Channel?, source: Repo.Loaded? = src) {
@@ -242,6 +245,19 @@ class MultiViewActivity : Activity() {
         highlight()
     }
 
+    /** Tasten immer zuerst hier auswerten, egal welches Element den Fokus hat */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val k = event.keyCode
+        val mine = k in arrayOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN)
+        if (mine) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onKeyDown(k, event)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> { move(-1, 0); return true }
@@ -355,11 +371,13 @@ class MultiViewActivity : Activity() {
     private fun pickGroupOf(src: Repo.Loaded) {
         if (src.channels.isEmpty()) { toast("Keine Kanäle"); return }
         val store = Store(this)
-        val favs = store.favorites()
-        val favList = src.channels.filter { favKey(it) in favs }.distinctBy { favKey(it) }
+        val byKey = src.channels.groupBy { favKey(it) }
         val hidden = store.hiddenGroups(src.playlist.id)
         val groups = ArrayList<Pair<String, List<Channel>>>()
-        if (favList.isNotEmpty()) groups.add(PlayerActivity.G_FAV to favList)
+        store.favLists().forEach { fl ->
+            val l = fl.keys.mapNotNull { byKey[it]?.firstOrNull() }.sortedBy { it.number }
+            if (l.isNotEmpty()) groups.add("★ ${fl.name}" to l)
+        }
         groups.add(PlayerActivity.G_ALL to src.channels.filter { it.group !in hidden })
         src.groups.filter { it !in hidden }.forEach { g -> groups.add(g to (src.byGroup[g] ?: emptyList())) }
         AlertDialog.Builder(this)

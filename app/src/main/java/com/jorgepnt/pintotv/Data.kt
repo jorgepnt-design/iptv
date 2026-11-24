@@ -103,25 +103,42 @@ class Store(ctx: Context) {
 
     fun active(): Playlist? = playlists().let { l -> l.firstOrNull { it.id == activeId } ?: l.firstOrNull() }
 
-    /** Favoriten über den Sendernamen – bleiben erhalten, auch wenn sich Adresse, Format oder Playlist ändern */
-    fun favorites(): Set<String> = sp.getStringSet("favs", emptySet())!!.toSet()
+    // ---------- Favoritenlisten (über den Sendernamen – bleiben bei Neuladen/Formatwechsel erhalten) ----------
+
+    class FavList(val name: String, val keys: MutableSet<String>)
+
+    fun favLists(): MutableList<FavList> {
+        val raw = sp.getString("favlists", null)
+        if (raw == null) {
+            // Umzug von der früheren einzelnen Liste
+            val old = sp.getStringSet("favs", emptySet())!!.toMutableSet()
+            return mutableListOf(FavList("Favoriten", old))
+        }
+        val a = JSONArray(raw)
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i); val k = o.getJSONArray("k")
+            FavList(o.getString("n"), (0 until k.length()).map { k.getString(it) }.toMutableSet())
+        }.toMutableList()
+    }
+
+    fun saveFavLists(l: List<FavList>) {
+        val a = JSONArray()
+        l.forEach { f -> a.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList()))) }
+        sp.edit().putString("favlists", a.toString()).commit()
+    }
+
+    /** alle Favoriten aus allen Listen (für den Stern in der Liste) */
+    fun favorites(): Set<String> = favLists().flatMap { it.keys }.toSet()
 
     fun isFavorite(c: Channel) = favKey(c) in favorites()
-
-    fun toggleFavorite(c: Channel): Boolean {
-        val s = favorites().toMutableSet()
-        val k = favKey(c)
-        val added = if (k in s) { s.remove(k); false } else { s.add(k); true }
-        sp.edit().putStringSet("favs", s).commit()
-        return added
-    }
 
     /** alte Favoriten (gespeichert über die Stream-Adresse) übernehmen */
     fun migrateFavorites(pid: String, channels: List<Channel>) {
         val old = sp.getStringSet("fav_$pid", null) ?: return
-        val s = favorites().toMutableSet()
-        channels.filter { it.url in old }.forEach { s.add(favKey(it)) }
-        sp.edit().putStringSet("favs", s).remove("fav_$pid").commit()
+        val l = favLists()
+        channels.filter { it.url in old }.forEach { l[0].keys.add(favKey(it)) }
+        saveFavLists(l)
+        sp.edit().remove("fav_$pid").commit()
     }
 
     /** ausgeblendete Gruppen je Playlist */
