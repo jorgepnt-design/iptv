@@ -577,13 +577,46 @@ class PlayerActivity : Activity() {
         if (Repo.groups.isEmpty()) return
         AlertDialog.Builder(this)
             .setTitle("Gruppen verwalten")
-            .setItems(arrayOf("Nach Ländern auswählen", "Gruppen einzeln ein-/ausblenden", "Alle Gruppen einblenden")) { _, w ->
+            .setItems(arrayOf(
+                "Nach Ländern auswählen",
+                "Gruppen einzeln ein-/ausblenden",
+                "Alle Gruppen einblenden",
+                "🎬 Filme: Länder / Kategorien ausblenden",
+                "📺 Serien: Länder / Kategorien ausblenden"
+            )) { _, w ->
                 when (w) {
                     0 -> chooseCountries(pid)
                     1 -> chooseGroups(pid)
                     2 -> { store.setHiddenGroups(pid, emptySet()); applyGroupChange("Alle Gruppen eingeblendet") }
+                    3 -> manageVodCats(false)
+                    4 -> manageVodCats(true)
                 }
             }.show()
+    }
+
+    /** Kategorien/Länder bei Filmen bzw. Serien ausblenden – direkt aus dem Menü */
+    private fun manageVodCats(series: Boolean) {
+        val p = playlist ?: return
+        val what = if (series) "Serien" else "Filme"
+        val dlg = AlertDialog.Builder(this).setTitle("$what werden geladen").setMessage("Starte …").create()
+        dlg.show()
+        val job = scope.launch {
+            val cat = try {
+                Vod.catalog(this@PlayerActivity, p, series) { t, pct -> runOnUiThread { dlg.setMessage(if (pct >= 0) "$t\n$pct %" else t) } }
+            } catch (e: Exception) {
+                dlg.dismiss(); toast("$what konnten nicht geladen werden: ${e.message}"); return@launch
+            }
+            dlg.dismiss()
+            if (cat.categories.isEmpty()) { toast("Keine $what in dieser Playlist"); return@launch }
+            val key = p.id + if (series) ":series" else ":movies"
+            val names = cat.categories.map { it.name }
+            val counts = cat.categories.associate { c -> c.name to cat.items.count { it.categoryId == c.id } }
+            Dialogs.manageGroups(this@PlayerActivity, names, { counts[it] ?: 0 }, store.hiddenGroups(key), what) { hide ->
+                store.setHiddenGroups(key, hide)
+                toast("$what: ${names.size - hide.size} von ${names.size} Kategorien sichtbar")
+            }
+        }
+        dlg.setOnCancelListener { job.cancel() }
     }
 
     private fun multiChoice(title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) =
