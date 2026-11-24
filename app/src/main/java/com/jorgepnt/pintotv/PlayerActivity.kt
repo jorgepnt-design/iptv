@@ -40,6 +40,7 @@ class PlayerActivity : Activity() {
     companion object {
         const val G_FAV = "★ Favoriten"
         const val G_RECENT = "Zuletzt gesehen"
+        const val G_SWITCH = "⇄ Playlist wechseln"
         const val G_ALL = "Alle Kanäle"
         const val REQ_GUIDE = 1
         const val REQ_PLAYLIST = 2
@@ -163,8 +164,11 @@ class PlayerActivity : Activity() {
     // ---------- Touch (Handy/Tablet) ----------
 
     private val isTouchDevice by lazy {
-        packageManager.hasSystemFeature("android.hardware.touchscreen") &&
-            !packageManager.hasSystemFeature("android.software.leanback")
+        val ui = getSystemService(UI_MODE_SERVICE) as android.app.UiModeManager
+        val tv = ui.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature("android.software.leanback") ||
+            packageManager.hasSystemFeature("android.software.leanback_only")
+        !tv && packageManager.hasSystemFeature("android.hardware.touchscreen")
     }
 
     private fun initTouch() {
@@ -326,7 +330,7 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        groupKeys = listOf(G_SWITCH) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
@@ -358,8 +362,12 @@ class PlayerActivity : Activity() {
         menuList.itemAnimator = null
 
         groupAdapter = TextAdapter(
-            onFocus = { pos -> groupKeys.getOrNull(pos)?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
-            onClick = { pos -> groupKeys.getOrNull(pos)?.let { showGroup(it) }; focusChannel(-1) }
+            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it != G_SWITCH }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
+            onClick = { pos ->
+                val g = groupKeys.getOrNull(pos)
+                if (g == G_SWITCH) switchPlaylist()
+                else { g?.let { showGroup(it) }; focusChannel(-1) }
+            }
         )
         groupList.layoutManager = LinearLayoutManager(this)
         groupList.adapter = groupAdapter
@@ -411,6 +419,23 @@ class PlayerActivity : Activity() {
             }.show()
     }
 
+    /** Playlist direkt aus der Kanalliste wechseln */
+    private fun switchPlaylist() {
+        armOverlayTimer()
+        val pls = store.playlists()
+        val labels = pls.map { (if (it.id == playlist?.id) "● " else "    ") + it.name + "   (" + (if (it.type == "xtream") "Xtream" else "M3U") + ")" } + "+ Playlists verwalten …"
+        AlertDialog.Builder(this)
+            .setTitle("Welche Playlist ansehen?")
+            .setItems(labels.toTypedArray()) { _, w ->
+                if (w == pls.size) { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST); return@setItems }
+                val p = pls[w]
+                if (p.id == playlist?.id) return@setItems
+                store.activeId = p.id
+                hideOverlay()
+                load(false)
+            }.show()
+    }
+
     // ---------- Favoritenlisten ----------
 
     /** Sender in Favoritenlisten aufnehmen/entfernen (Haken je Liste) */
@@ -441,7 +466,7 @@ class PlayerActivity : Activity() {
         channelAdapter.favorites = store.favorites()
         val oldView = viewingGroup
         buildGroups()
-        if (viewingGroup !in groupKeys) viewingGroup = groupKeys.first()
+        if (viewingGroup !in groupKeys || viewingGroup == G_SWITCH) viewingGroup = groupKeys.getOrElse(1) { G_ALL }
         if (playingGroup !in groupKeys) playingGroup = G_ALL
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
@@ -612,7 +637,10 @@ class PlayerActivity : Activity() {
     }
 
     private fun refreshGroupCounts() {
-        groupAdapter.items = groupKeys.map { g -> TextItem(g, channelsOf(g).size.toString()) }
+        groupAdapter.items = groupKeys.map { g ->
+            if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
+            else TextItem(g, channelsOf(g).size.toString())
+        }
         groupAdapter.activePos = groupKeys.indexOf(viewingGroup)
     }
 
@@ -698,7 +726,7 @@ class PlayerActivity : Activity() {
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
 
-    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(0))
+    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(1))
 
     private fun focusChannel(pos: Int) {
         val p = if (pos >= 0) pos else channelAdapter.indexOf(current?.url).coerceAtLeast(0)
