@@ -386,6 +386,7 @@ class PlayerActivity : Activity() {
     private val menuItems get() = listOf(
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
+        "Version beim Aufnehmen fragen: " + if (getSharedPreferences("pintotv", MODE_PRIVATE).getBoolean("recAskVersion", false)) "an" else "aus",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
     )
 
@@ -455,7 +456,7 @@ class PlayerActivity : Activity() {
                     6 -> confirmClearRecents()
                     4 -> if (Recorder.active && Recorder.channelUrl == c.url) stopRecording() else {
                         if (c.url != current?.url) { playingGroup = viewingGroup; play(c, channelAdapter.items) }
-                        hideOverlay(); startRecording()
+                        hideOverlay(); ui.postDelayed({ startRecording() }, 300)
                     }
                     3 -> pickFavListThen { name -> markMany(name, c) }
                     0 -> chooseFavLists(c)
@@ -562,7 +563,8 @@ class PlayerActivity : Activity() {
 
     private fun startRecording() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
-        val variants = try { variantsOf(c) } catch (e: Throwable) { listOf(c) }
+        val askVersion = getSharedPreferences("pintotv", MODE_PRIVATE).getBoolean("recAskVersion", false)
+        val variants = if (askVersion) try { variantsOf(c) } catch (e: Throwable) { listOf(c) } else listOf(c)
         if (variants.size > 1) {
             AlertDialog.Builder(this)
                 .setTitle("Welche Version aufnehmen?")
@@ -1021,6 +1023,8 @@ class PlayerActivity : Activity() {
         overlay.visibility = View.GONE
         menuPane.visibility = View.GONE
         ui.removeCallbacks(overlayTimeout)
+        // Fernsehbild bekommt den Tastenfokus, damit nie „kein Fokus“ entsteht
+        playerView.isFocusable = true
         playerView.requestFocus()
     }
 
@@ -1121,11 +1125,16 @@ class PlayerActivity : Activity() {
                 else toast("Gilt nur für Xtream-Codes-Playlists")
             }
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
-            item == "● Aufnahme starten" -> { hideOverlay(); startRecording() }
+            item == "● Aufnahme starten" -> { hideOverlay(); ui.postDelayed({ startRecording() }, 300) }
             item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
             item == "Aufnahmen" -> showRecordings()
             item == "Aufnahme-Speicherort" -> chooseRecordDir()
             item.startsWith("Aufnahme-Qualität") -> chooseRecQuality(i)
+            item.startsWith("Version beim Aufnehmen fragen") -> {
+                val sp = getSharedPreferences("pintotv", MODE_PRIVATE)
+                sp.edit().putBoolean("recAskVersion", !sp.getBoolean("recAskVersion", false)).apply()
+                menuAdapter.items = menuItems.map { TextItem(it) }; focusAt(menuList, i)
+            }
             item == "Beenden" -> finish()
         }
     }
