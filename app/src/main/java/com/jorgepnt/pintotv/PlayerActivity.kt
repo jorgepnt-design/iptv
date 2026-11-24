@@ -566,40 +566,8 @@ class PlayerActivity : Activity() {
             }.show()
     }
 
-    /** Mehrfachauswahl – Knöpfe stehen OBEN, damit man nicht durch die ganze Liste scrollen muss */
-    private fun multiChoice(title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) {
-        val d = resources.displayMetrics.density
-        val head = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding((24 * d).toInt(), (18 * d).toInt(), (24 * d).toInt(), (8 * d).toInt())
-        }
-        head.addView(TextView(this).apply { text = title; textSize = 20f; setTextColor(android.graphics.Color.WHITE) })
-        val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
-        fun btn(t: String) = android.widget.Button(this).apply {
-            text = t; isAllCaps = false; textSize = 15f
-            setTextColor(android.graphics.Color.WHITE)
-            setBackgroundResource(R.drawable.button_bg)
-            setPadding((16 * d).toInt(), 0, (16 * d).toInt(), 0)
-            layoutParams = android.widget.LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (10 * d).toInt() }
-        }
-        val bApply = btn("✓ Übernehmen"); val bAll = btn("Alle an"); val bNone = btn("Alle aus"); val bCancel = btn("Abbrechen")
-        listOf(bApply, bAll, bNone, bCancel).forEach { row.addView(it) }
-        head.addView(row)
-        val dlg = AlertDialog.Builder(this)
-            .setCustomTitle(head)
-            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
-            .create()
-        fun setAll(on: Boolean) {
-            for (i in checked.indices) { checked[i] = on; dlg.listView.setItemChecked(i, on) }
-            toast(if (on) "Alle ausgewählt" else "Alle abgewählt")
-        }
-        bAll.setOnClickListener { setAll(true) }
-        bNone.setOnClickListener { setAll(false) }
-        bCancel.setOnClickListener { dlg.dismiss() }
-        bApply.setOnClickListener { dlg.dismiss(); onApply() }
-        dlg.setOnShowListener { bApply.requestFocus() }
-        dlg.show()
-    }
+    private fun multiChoice(title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) =
+        Dialogs.multiChoice(this, title, labels, checked, onApply)
 
     private fun chooseCountries(pid: String) {
         val byCountry = LinkedHashMap<String, MutableList<String>>()

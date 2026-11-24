@@ -66,6 +66,7 @@ class VodActivity : Activity() {
         grid.itemAnimator = null
 
         findViewById<View>(R.id.vodSearch).setOnClickListener { search() }
+        findViewById<View>(R.id.vodManage).setOnClickListener { manageCats() }
         load()
     }
 
@@ -114,12 +115,33 @@ class VodActivity : Activity() {
         }
     }
 
+    private val hiddenKey get() = playlist.id + if (series) ":series" else ":movies"
+    private var hidden: Set<String> = emptySet()
+    private var visibleItems: List<VodItem> = emptyList()
+
+    private fun manageCats() {
+        if (catalog.categories.isEmpty()) return
+        val names = catalog.categories.map { it.name }
+        val countByName = catalog.categories.associate { c -> c.name to catalog.items.count { it.categoryId == c.id } }
+        Dialogs.manageGroups(this, names, { countByName[it] ?: 0 }, store.hiddenGroups(hiddenKey),
+            if (series) "Serien" else "Filme") { hide ->
+            store.setHiddenGroups(hiddenKey, hide)
+            shownCat = null
+            buildCats()
+            showCat(catKeys.firstOrNull { it == "" } ?: catKeys.first())
+            Toast.makeText(this, "${catalog.categories.size - hide.size} von ${catalog.categories.size} Kategorien sichtbar", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun buildCats() {
+        hidden = store.hiddenGroups(hiddenKey)
+        val hiddenIds = catalog.categories.filter { it.name in hidden }.map { it.id }.toSet()
+        visibleItems = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
         val keys = ArrayList<String>(); val labels = ArrayList<String>()
         if (resumeItems().isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen") }
         if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis") }
         keys.add(""); labels.add("Alle")
-        catalog.categories.forEach { keys.add(it.id); labels.add(it.name) }
+        catalog.categories.filter { it.name !in hidden }.forEach { keys.add(it.id); labels.add(it.name) }
         catKeys = keys; catLabels = labels
         catAdapter.items = keys.indices.map { i -> TextItem(labels[i], itemsOf(keys[i]).size.toString()) }
     }
@@ -129,7 +151,7 @@ class VodActivity : Activity() {
 
     private fun itemsOf(cat: String): List<VodItem> {
         val l = when (cat) {
-            "" -> catalog.items
+            "" -> visibleItems
             "#resume" -> resumeItems()
             "#search" -> searchResults
             else -> catalog.items.filter { it.categoryId == cat }
@@ -165,7 +187,7 @@ class VodActivity : Activity() {
     private fun runSearch(q: String) {
         val query = q.trim().lowercase()
         if (query.isEmpty()) return
-        searchResults = catalog.items.filter { it.name.lowercase().contains(query) }
+        searchResults = visibleItems.filter { it.name.lowercase().contains(query) }
         if (searchResults.isEmpty()) { Toast.makeText(this, "Nichts gefunden für „$q“", Toast.LENGTH_SHORT).show(); return }
         buildCats()
         shownCat = null

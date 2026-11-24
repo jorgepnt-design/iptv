@@ -34,6 +34,18 @@
             android:textColor="#FFF"
             android:textSize="17sp" />
 
+        <TextView
+            android:id="@+id/vodManage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/item_bg"
+            android:focusable="true"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="11dp"
+            android:text="⚙  Kategorien / Länder"
+            android:textColor="#FFF"
+            android:textSize="17sp" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/vodCats"
             android:layout_width="match_parent"
