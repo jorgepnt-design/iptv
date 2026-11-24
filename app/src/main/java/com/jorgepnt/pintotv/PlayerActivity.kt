@@ -509,7 +509,8 @@ class PlayerActivity : Activity() {
     // ---------- Aufnahme ----------
 
     private val recTicker = object : Runnable {
-        override fun run() {
+        override fun run() = try { tick() } catch (e: Throwable) { recError("Anzeige", e) }
+        private fun tick() {
             if (!Recorder.active) { findViewById<View>(R.id.recIndicator).visibility = View.GONE; return }
             findViewById<TextView>(R.id.recIndicator).text = "● REC ${Recorder.elapsed()}  ·  ${mb(Recorder.bytes)}"
             if (Recorder.freeBytes(this@PlayerActivity) < 300L * 1024 * 1024) {
@@ -558,7 +559,7 @@ class PlayerActivity : Activity() {
 
     private fun startRecording() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
-        val variants = variantsOf(c)
+        val variants = try { variantsOf(c) } catch (e: Throwable) { listOf(c) }
         if (variants.size > 1) {
             AlertDialog.Builder(this)
                 .setTitle("Welche Version aufnehmen?")
@@ -572,7 +573,22 @@ class PlayerActivity : Activity() {
         startRecordingNow()
     }
 
-    private fun startRecordingNow() {
+    private fun recError(what: String, e: Throwable) {
+        val sw = java.io.StringWriter(); e.printStackTrace(java.io.PrintWriter(sw))
+        val lines = sw.toString().lines()
+        AlertDialog.Builder(this)
+            .setTitle("Aufnahme-Fehler ($what) – bitte Foto schicken")
+            .setMessage((lines.take(2) + lines.filter { it.contains("pintotv") || it.startsWith("Caused") }.take(6)).joinToString("\n"))
+            .setPositiveButton("OK", null).show()
+    }
+
+    private fun startRecordingNow() = try { startRecordingInner() } catch (e: Throwable) {
+        try { Recorder.stop() } catch (_: Throwable) { }
+        findViewById<View>(R.id.recIndicator).visibility = View.GONE
+        recError("Start", e)
+    }
+
+    private fun startRecordingInner() {
         val c = current ?: run { toast("Kein Sender läuft"); return }
         if (Recorder.freeBytes(this) < 1024L * 1024 * 1024) { toast("Zu wenig Speicher frei (unter 1 GB)"); return }
         Recorder.start(this, c)
@@ -583,7 +599,9 @@ class PlayerActivity : Activity() {
         toast("● Aufnahme von „${c.name}“ läuft")
     }
 
-    private fun stopRecording() {
+    private fun stopRecording() = try { stopRecordingInner() } catch (e: Throwable) { recError("Stopp", e) }
+
+    private fun stopRecordingInner() {
         val name = Recorder.channelName
         val f = Recorder.stop()
         applyRecQuality(false)

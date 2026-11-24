@@ -1,6 +1,6 @@
 {
-  "versionCode": 33,
-  "versionName": "2.21",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=33",
-  "notes": "• Aufnahme-Speicherort wählbar (intern, USB-Stick, Festplatte, SD-Karte)\n• Aufnahme-Qualität: Senderversion (SD/HD/FHD) beim Start wählen, bei HLS Qualitätsstufe begrenzen"
+  "versionCode": 34,
+  "versionName": "2.22",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=34",
+  "notes": "• Aufnahme abgesichert: bei einem Problem erscheint eine Fehlermeldung statt eines Absturzes\n• Nicht beschreibbarer Speicherort → automatisch interner Speicher"
 }

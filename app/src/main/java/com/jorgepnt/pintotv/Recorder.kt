@@ -53,13 +53,15 @@ object Recorder {
 
     fun free(d: File): Long = try { d.mkdirs(); StatFs(d.path).availableBytes } catch (e: Exception) { 0 }
 
-    fun freeBytes(ctx: Context): Long = try { StatFs(dir(ctx).path).availableBytes } catch (e: Exception) { Long.MAX_VALUE }
+    fun freeBytes(ctx: Context): Long = try { StatFs(dir(ctx).path).availableBytes } catch (e: Throwable) { Long.MAX_VALUE }
 
     fun start(ctx: Context, c: Channel): File {
         stop()
         val safe = c.name.replace(Regex("[^\\p{L}\\p{N} ._-]"), "").trim().take(40).ifBlank { "Aufnahme" }
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.GERMANY).format(Date())
-        val f = File(dir(ctx), "${safe}_$stamp.ts")
+        var f = File(dir(ctx), "${safe}_$stamp.ts")
+        // falls der gewählte Speicherort nicht beschreibbar ist → interner Speicher
+        if (!(f.parentFile?.canWrite() ?: false)) f = File(places(ctx).first().dir.apply { mkdirs() }, f.name)
         synchronized(lock) {
             out = FileOutputStream(f, true)
             file = f; channelUrl = c.url; channelName = c.name
