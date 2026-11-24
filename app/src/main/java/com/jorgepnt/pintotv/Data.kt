@@ -141,6 +141,20 @@ class Store(ctx: Context) {
         sp.edit().remove("fav_$pid").commit()
     }
 
+    var sortByName: Boolean
+        get() = sp.getBoolean("sortName", false)
+        set(v) = sp.edit().putBoolean("sortName", v).apply()
+
+    /** Wiedergabeposition für Filme/Folgen */
+    fun resumePos(url: String): Long = sp.getLong("pos_" + url.hashCode(), 0)
+    fun resumeDur(url: String): Long = sp.getLong("dur_" + url.hashCode(), 0)
+    fun setResumePos(url: String, ms: Long, dur: Long) {
+        val e = sp.edit()
+        if (ms <= 0) e.remove("pos_" + url.hashCode()).remove("dur_" + url.hashCode())
+        else e.putLong("pos_" + url.hashCode(), ms).putLong("dur_" + url.hashCode(), dur)
+        e.apply()
+    }
+
     /** ausgeblendete Gruppen je Playlist */
     fun hiddenGroups(pid: String): Set<String> = sp.getStringSet("hidden_$pid", emptySet())!!.toSet()
     fun setHiddenGroups(pid: String, groups: Set<String>) = sp.edit().putStringSet("hidden_$pid", groups).commit()
@@ -157,7 +171,7 @@ class Store(ctx: Context) {
     }
 
     fun lastUrl(pid: String): String? = sp.getString("last_$pid", null)
-    fun setLastUrl(pid: String, url: String) = sp.edit().putString("last_$pid", url).apply()
+    fun setLastUrl(pid: String, url: String) { sp.edit().putString("last_$pid", url).commit() }
 
     var lastGroup: String?
         get() = sp.getString("lastGroup", null)
@@ -373,7 +387,7 @@ object Xtream {
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-    private fun auth(p: Playlist) = "username=${enc(p.user)}&password=${enc(p.pass)}"
+    fun auth(p: Playlist) = "username=${enc(p.user)}&password=${enc(p.pass)}"
 
     /** erlaubte gleichzeitige Verbindungen laut Anbieter (0 = unbekannt) */
     @Volatile var maxConnections = 0
@@ -458,15 +472,15 @@ object XmlTv {
         } catch (e: Exception) { 0 }
     }
 
-    fun parse(input: InputStream, channels: List<Channel>): Map<String, List<Program>> {
+    fun parse(input: InputStream, channels: List<Channel>, withDesc: Boolean = true): Map<String, List<Program>> {
         val ids = HashSet<String>()
         val names = HashSet<String>()
         channels.forEach { c -> c.epgId?.lowercase()?.let { ids.add(it) }; names.add("n:" + norm(c.name)) }
         val chanKeys = HashMap<String, MutableList<String>>()
         val out = HashMap<String, ArrayList<Program>>()
         val now = System.currentTimeMillis()
-        val from = now - 12 * 3600_000L
-        val to = now + 4 * 24 * 3600_000L
+        val from = now - 6 * 3600_000L
+        val to = now + 2 * 24 * 3600_000L
 
         val xp = org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()
         xp.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
@@ -506,7 +520,7 @@ object XmlTv {
                             }
                         }
                         "title" -> if (pKeys != null && title.isEmpty()) title = xp.nextText().trim()
-                        "desc" -> if (pKeys != null && desc.isEmpty()) desc = xp.nextText().trim().take(700)
+                        "desc" -> if (pKeys != null && desc.isEmpty() && withDesc) desc = xp.nextText().trim().take(300)
                     }
                 } else if (ev == XmlPullParser.END_TAG) {
                     when (xp.name) {
@@ -519,6 +533,8 @@ object XmlTv {
                 }
                 ev = xp.next()
             }
+        } catch (e: OutOfMemoryError) {
+            throw e
         } catch (e: Exception) {
             // fehlerhaftes Dateiende: bisher gelesene Daten behalten
             if (out.isEmpty()) throw IOException("EPG konnte nicht gelesen werden: ${e.message}")
@@ -542,10 +558,13 @@ object Repo {
     var byGroup: Map<String, List<Channel>> = emptyMap(); private set
     var epgUrl: String = ""; private set
     @Volatile var epg: Map<String, List<Program>> = emptyMap(); private set
+    /** Filme/Serien-Einträge aus M3U-Playlists */
+    var m3uVod: List<Channel> = emptyList(); private set
 
     private const val MAX_AGE = 12 * 3600_000L
 
-    class Loaded(val playlist: Playlist, val channels: List<Channel>, val epgUrl: String, val maxConnections: Int, val ua: String) {
+    class Loaded(val playlist: Playlist, val channels: List<Channel>, val epgUrl: String, val maxConnections: Int, val ua: String,
+                 val vod: List<Channel> = emptyList()) {
         val groups: List<String> by lazy { channels.map { it.group }.distinct() }
         val byGroup: Map<String, List<Channel>> by lazy { channels.groupBy { it.group } }
     }
@@ -618,7 +637,9 @@ object Repo {
             f.writeText(JSONObject().put("epg", detectedEpg).put("maxc", maxc).put("ch", a).toString())
         }
         val epgU = p.epgUrl.ifBlank { if (p.type == "xtream") Xtream.epgUrl(p) else detectedEpg }
-        return Loaded(p, list!!, epgU, maxc, ua)
+        // Filme/Serien aus M3U-Listen von den Live-Sendern trennen
+        val (vod, live) = list!!.partition { Vod.isVodUrl(it.url) }
+        return Loaded(p, live.ifEmpty { list!! }, epgU, maxc, ua, vod)
     }
 
     suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
@@ -626,6 +647,7 @@ object Repo {
         if (playlistId != p.id) epg = emptyMap()
         Http.UA = l.ua
         Xtream.maxConnections = l.maxConnections
+        m3uVod = l.vod
         channels = l.channels
         groups = l.groups
         byGroup = l.byGroup
@@ -655,7 +677,14 @@ object Repo {
         }
         if (epgUrl.isBlank()) throw IOException("Keine EPG-Adresse in der Playlist")
         progress?.invoke("TV-Programm: Verbinde …", -1)
-        val map = Http.open(epgUrl, Http.bytesTo("TV-Programm", progress)).use { XmlTv.parse(it, channels) }
+        epg = emptyMap() // alten Stand freigeben, bevor neu eingelesen wird
+        val map = try {
+            Http.open(epgUrl, Http.bytesTo("TV-Programm", progress)).use { XmlTv.parse(it, channels) }
+        } catch (e: OutOfMemoryError) {
+            System.gc()
+            progress?.invoke("TV-Programm sehr groß – lade ohne Beschreibungen …", -1)
+            Http.open(epgUrl, Http.bytesTo("TV-Programm (kompakt)", progress)).use { XmlTv.parse(it, channels, withDesc = false) }
+        }
         progress?.invoke("TV-Programm wird gespeichert …", 100)
         writeEpg(f, map)
         epg = map

@@ -41,6 +41,8 @@ class PlayerActivity : Activity() {
         const val G_FAV = "★ Favoriten"
         const val G_RECENT = "Zuletzt gesehen"
         const val G_SWITCH = "⇄ Playlist wechseln"
+        const val G_MOVIES = "🎬 Filme"
+        const val G_SERIES = "📺 Serien"
         const val G_ALL = "Alle Kanäle"
         const val REQ_GUIDE = 1
         const val REQ_PLAYLIST = 2
@@ -106,6 +108,14 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.overlayVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.loadVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.versionTag).text = "PintoTV $v"
+
+        App.takeCrash(this)?.let { report ->
+            AlertDialog.Builder(this)
+                .setTitle("PintoTV ist abgestürzt – bitte Foto davon schicken")
+                .setMessage(report)
+                .setPositiveButton("OK", null)
+                .show()
+        }
 
         if (store.playlists().isEmpty()) {
             showStatus("Willkommen bei PintoTV ${appVersion(this)}!\nBitte zuerst eine Playlist hinzufügen.")
@@ -236,7 +246,8 @@ class PlayerActivity : Activity() {
         store.lastGroup = playingGroup
         startStream(c)
         channelAdapter.playingUrl = c.url
-        channelAdapter.notifyDataSetChanged()
+        // erst nach dem Klick neu zeichnen (nicht mitten in der Fokus-Verarbeitung)
+        channelList.post { try { channelAdapter.notifyDataSetChanged() } catch (e: Exception) { } }
         showBanner()
     }
 
@@ -252,6 +263,7 @@ class PlayerActivity : Activity() {
 
     private fun load(force: Boolean) {
         val p = store.active() ?: return
+        if (force) Vod.clearCache()
         playlist = p
         loading = true
         hideStatus()
@@ -313,9 +325,10 @@ class PlayerActivity : Activity() {
                 channelAdapter.notifyDataSetChanged()
                 if (banner.visibility == View.VISIBLE) showBanner()
                 if (force) toast("TV-Programm aktualisiert")
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 chip.visibility = View.GONE
-                toast("TV-Programm nicht verfügbar: ${e.message}")
+                if (e is OutOfMemoryError) toast("TV-Programm zu groß für den Speicher – wird ohne Beschreibungen geladen")
+                else toast("TV-Programm nicht verfügbar: ${e.message}")
             }
         }
     }
@@ -330,10 +343,15 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = listOf(G_SWITCH) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
+        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + Repo.groups.filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
+        val l = channelsOfRaw(g)
+        return if (store.sortByName && g != G_RECENT) l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') } else l
+    }
+
+    private fun channelsOfRaw(g: String): List<Channel> {
         playlist?.id ?: return emptyList()
         return when (g) {
             in favGroups.keys -> {
@@ -351,7 +369,7 @@ class PlayerActivity : Activity() {
     // ---------- Listen / Overlay ----------
 
     private val menuItems get() = listOf(
-        "TV-Guide", "Multi-View", "Suche", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
+        "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Beenden"
     )
 
@@ -362,10 +380,11 @@ class PlayerActivity : Activity() {
         menuList.itemAnimator = null
 
         groupAdapter = TextAdapter(
-            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it != G_SWITCH }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
+            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it != G_SWITCH && it != G_MOVIES && it != G_SERIES }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
             onClick = { pos ->
                 val g = groupKeys.getOrNull(pos)
                 if (g == G_SWITCH) switchPlaylist()
+                else if (g == G_MOVIES || g == G_SERIES) openVod(g == G_SERIES)
                 else { g?.let { showGroup(it) }; focusChannel(-1) }
             }
         )
@@ -466,7 +485,7 @@ class PlayerActivity : Activity() {
         channelAdapter.favorites = store.favorites()
         val oldView = viewingGroup
         buildGroups()
-        if (viewingGroup !in groupKeys || viewingGroup == G_SWITCH) viewingGroup = groupKeys.getOrElse(1) { G_ALL }
+        if (viewingGroup !in groupKeys || viewingGroup in setOf(G_SWITCH, G_MOVIES, G_SERIES)) viewingGroup = groupKeys.getOrElse(3) { G_ALL }
         if (playingGroup !in groupKeys) playingGroup = G_ALL
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
@@ -639,6 +658,7 @@ class PlayerActivity : Activity() {
     private fun refreshGroupCounts() {
         groupAdapter.items = groupKeys.map { g ->
             if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
+            else if (g == G_MOVIES || g == G_SERIES) TextItem(g, "›")
             else TextItem(g, channelsOf(g).size.toString())
         }
         groupAdapter.activePos = groupKeys.indexOf(viewingGroup)
@@ -726,7 +746,13 @@ class PlayerActivity : Activity() {
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
 
-    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(1))
+    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(3))
+
+    private fun openVod(series: Boolean) {
+        if (playlist == null) return
+        hideOverlay()
+        startActivity(Intent(this, VodActivity::class.java).putExtra("series", series))
+    }
 
     private fun focusChannel(pos: Int) {
         val p = if (pos >= 0) pos else channelAdapter.indexOf(current?.url).coerceAtLeast(0)
@@ -764,6 +790,15 @@ class PlayerActivity : Activity() {
         val item = menuItems.getOrNull(i) ?: return
         when {
             item == "TV-Guide" -> openGuide()
+            item == "Filme" -> openVod(false)
+            item == "Serien" -> openVod(true)
+            item.startsWith("Sortierung") -> {
+                store.sortByName = !store.sortByName
+                menuAdapter.items = menuItems.map { TextItem(it) }
+                focusAt(menuList, i)
+                channelAdapter.items = channelsOf(viewingGroup)
+                toast(if (store.sortByName) "Sender nach Name sortiert" else "Sender nach Nummer sortiert")
+            }
             item == "Multi-View" -> openMulti()
             item == "Suche" -> search()
             item == "Favoritenlisten" -> manageFavLists()

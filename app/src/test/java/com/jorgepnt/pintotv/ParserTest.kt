@@ -103,3 +103,14 @@ class CountryTest {
         org.junit.Assert.assertEquals(favKey(a), favKey(b))
     }
 }
+
+class VodTest {
+    @Test fun vodDetection() {
+        org.junit.Assert.assertTrue(Vod.isVodUrl("http://s:80/movie/u/p/123.mkv"))
+        org.junit.Assert.assertTrue(Vod.isVodUrl("http://s:80/series/u/p/55.mp4"))
+        org.junit.Assert.assertTrue(Vod.isVodUrl("http://x/film.mp4"))
+        org.junit.Assert.assertFalse(Vod.isVodUrl("http://s:80/live/u/p/1.ts"))
+        org.junit.Assert.assertFalse(Vod.isVodUrl("http://s:80/u/p/1"))
+        org.junit.Assert.assertFalse(Vod.isVodUrl("http://s/hls/stream.m3u8"))
+    }
+}
