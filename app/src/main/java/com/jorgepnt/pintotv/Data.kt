@@ -73,9 +73,25 @@ object Countries {
     /** Erwachsenen-Inhalte erkennen – eigene „Länder“-Gruppe, damit man sie gezielt ein-/ausblenden kann */
     private val adult = Regex("xxx|adult|18\\+|\\+18|porn|erotik|erotic|for adults|🔞", RegexOption.IGNORE_CASE)
 
+    private val prefixSpace = Regex("^[\\s|\\[(★✪•]*([A-Z]{2,3})\\s+\\S")
+
+    private fun norm(c: String) = when (c) { "GER" -> "DE"; "GB" -> "UK"; "USA" -> "US"; else -> c }
+
+    /** Flaggen-Emoji wie 🇩🇪 am Anfang */
+    private fun flag(g: String): String? {
+        val t = g.trimStart()
+        if (t.length < 4) return null
+        val a = t.codePointAt(0); val b = t.codePointAt(Character.charCount(a))
+        if (a !in 0x1F1E6..0x1F1FF || b !in 0x1F1E6..0x1F1FF) return null
+        return norm("" + ('A' + (a - 0x1F1E6)) + ('A' + (b - 0x1F1E6)))
+    }
+
     fun code(group: String): String {
         if (adult.containsMatchIn(group)) return "XXX"
-        prefix.find(group)?.let { return it.groupValues[1].uppercase() }
+        flag(group)?.let { return it }
+        // „DE VIP SPORT“, „PT SPORT“: großgeschriebener Ländercode mit Leerzeichen dahinter
+        prefixSpace.find(group)?.let { m -> val c = m.groupValues[1]; if (c in names) return norm(c) }
+        prefix.find(group)?.let { return norm(it.groupValues[1].uppercase()) }
         val g = group.lowercase()
         words.firstOrNull { g.contains(it.first) }?.let { return it.second }
         return "?"

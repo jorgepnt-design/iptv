@@ -1,6 +1,6 @@
 {
-  "versionCode": 62,
-  "versionName": "2.50",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=62",
-  "notes": "• Einrichtung senden → Genau auswählen: Länder/Gruppen-Auswahl erscheint jetzt immer (Gruppen werden direkt geladen)\n• Bei mehreren Playlists für jede Playlist einzeln"
+  "versionCode": 63,
+  "versionName": "2.51",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=63",
+  "notes": "• Länder werden besser erkannt: auch Gruppen wie „DE VIP SPORT“ oder „PT SPORT“ und Flaggen 🇩🇪🇵🇹\n• Gilt für Gruppen/Länder, Filme/Serien und das Senden an andere Geräte"
 }

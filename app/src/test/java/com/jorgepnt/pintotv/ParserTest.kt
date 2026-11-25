@@ -119,5 +119,11 @@ class VodTest {
         org.junit.Assert.assertEquals("XXX", Countries.code("FOR ADULTS (18+)"))
         org.junit.Assert.assertEquals("DE", Countries.code("DE | Sport"))
         org.junit.Assert.assertEquals("PT", Countries.code("PT: Desporto"))
+        org.junit.Assert.assertEquals("DE", Countries.code("DE VIP SPORT"))
+        org.junit.Assert.assertEquals("DE", Countries.code("DE DEUTSCHLAND"))
+        org.junit.Assert.assertEquals("PT", Countries.code("PT SPORT TV"))
+        org.junit.Assert.assertEquals("PT", Countries.code("\uD83C\uDDF5\uD83C\uDDF9 Desporto"))
+        org.junit.Assert.assertEquals("UK", Countries.code("\uD83C\uDDEC\uD83C\uDDE7 News"))
+        org.junit.Assert.assertEquals("?", Countries.code("Sport Mix"))
     }
 }
