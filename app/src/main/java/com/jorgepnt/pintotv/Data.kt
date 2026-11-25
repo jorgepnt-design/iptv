@@ -221,6 +221,10 @@ class Store(ctx: Context) {
     }
 
     /** ausgeblendete Gruppen je Playlist */
+    /** gespeicherte Auswahl-Vorlagen fürs Senden an andere Geräte */
+    fun sendTemplates(): JSONArray = try { JSONArray(sp.getString("send_templates", "[]")) } catch (e: Exception) { JSONArray() }
+    fun saveSendTemplates(a: JSONArray) = sp.edit().putString("send_templates", a.toString()).commit()
+
     /** Länderauswahl aus der Fern-Einrichtung vormerken (wird beim ersten Laden angewendet) */
     fun setAllowedCountries(key: String, codes: Set<String>) = sp.edit().putStringSet("allowc_$key", codes).commit()
 

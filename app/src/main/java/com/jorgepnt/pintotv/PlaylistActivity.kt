@@ -180,24 +180,101 @@ class PlaylistActivity : Activity() {
     private class Pick(var playlists: Set<String>, var countries: Set<String>?, var favLists: Set<String>) {
         /** genau ausgeblendete Gruppen je Bereich (live / movies / series); fehlt = wie bei mir */
         val hidden = HashMap<String, Set<String>>()
+        /** Name der Vorlage, falls aus einer Vorlage geladen */
+        var template: String? = null
+
+        fun toJson(name: String): JSONObject {
+            val h = JSONObject(); hidden.forEach { (k, v) -> h.put(k, JSONArray(v.toList())) }
+            return JSONObject().put("n", name).put("p", JSONArray(playlists.toList())).put("f", JSONArray(favLists.toList())).put("h", h)
+        }
+
+        companion object {
+            fun fromJson(o: JSONObject): Pick {
+                fun set(a: JSONArray?) = a?.let { x -> (0 until x.length()).map { x.getString(it) }.toSet() } ?: emptySet()
+                val p = Pick(set(o.optJSONArray("p")), null, set(o.optJSONArray("f")))
+                o.optJSONObject("h")?.let { h -> h.keys().forEach { k -> p.hidden[k] = set(h.optJSONArray(k)) } }
+                p.template = o.optString("n")
+                return p
+            }
+        }
+    }
+
+    private fun templates(): List<JSONObject> = store.sendTemplates().let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+
+    private fun saveTemplate(name: String, pick: Pick, replace: String?) {
+        val list = templates().filter { it.optString("n") != (replace ?: name) && it.optString("n") != name }.toMutableList()
+        list.add(pick.toJson(name))
+        store.saveSendTemplates(JSONArray(list))
+        pick.template = name
+        Toast.makeText(this, "Vorlage „$name“ gespeichert", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun askTemplateName(old: String?, then: (String) -> Unit) {
+        val input = EditText(this).apply { isSingleLine = true; setText(old ?: ""); hint = "z. B. Paulo – nur Portugal" }
+        AlertDialog.Builder(this).setTitle(if (old == null) "Name der Vorlage" else "Vorlage umbenennen").setView(input)
+            .setPositiveButton("Speichern") { _, _ ->
+                val n = input.text.toString().trim()
+                if (n.isEmpty()) Toast.makeText(this, "Bitte einen Namen eingeben", Toast.LENGTH_SHORT).show() else then(n)
+            }.setNegativeButton("Abbrechen", null).show()
+    }
+
+    private fun templateMenu(o: JSONObject) {
+        val name = o.optString("n")
+        AlertDialog.Builder(this)
+            .setTitle("📋 Vorlage „$name“")
+            .setItems(arrayOf("📤 Senden (Gerätecode eingeben)", "✏️ Auswahl ändern", "Umbenennen", "🗑 Löschen")) { _, w ->
+                when (w) {
+                    0 -> askCodeThen(Pick.fromJson(o))
+                    1 -> pickPlaylists("", Pick.fromJson(o))
+                    2 -> askTemplateName(name) { n -> saveTemplate(n, Pick.fromJson(o), name) }
+                    3 -> AlertDialog.Builder(this).setTitle("Vorlage „$name“ löschen?")
+                        .setPositiveButton("Löschen") { _, _ ->
+                            store.saveSendTemplates(JSONArray(templates().filter { it.optString("n") != name }))
+                            Toast.makeText(this, "Vorlage gelöscht", Toast.LENGTH_SHORT).show()
+                        }.setNegativeButton("Abbrechen", null).show()
+                }
+            }.show()
+    }
+
+    /** nach der Auswahl: senden und/oder als Vorlage speichern */
+    private fun finishPick(pick: Pick) {
+        val t = pick.template
+        val items = if (t != null) arrayOf("📤 Jetzt senden (Gerätecode eingeben)", "💾 Vorlage „$t“ aktualisieren und senden", "💾 Vorlage „$t“ nur aktualisieren", "💾 Als neue Vorlage speichern …")
+        else arrayOf("📤 Jetzt senden (Gerätecode eingeben)", "💾 Als Vorlage speichern und senden …", "💾 Nur als Vorlage speichern …")
+        AlertDialog.Builder(this)
+            .setTitle("Auswahl fertig")
+            .setItems(items) { _, w ->
+                when {
+                    w == 0 -> askCodeThen(pick)
+                    t != null && w == 1 -> { saveTemplate(t, pick, t); askCodeThen(pick) }
+                    t != null && w == 2 -> saveTemplate(t, pick, t)
+                    t != null && w == 3 -> askTemplateName(null) { n -> saveTemplate(n, pick, null) }
+                    w == 1 -> askTemplateName(null) { n -> saveTemplate(n, pick, null); askCodeThen(pick) }
+                    w == 2 -> askTemplateName(null) { n -> saveTemplate(n, pick, null) }
+                }
+            }.show()
     }
 
     private fun chooseScope(code: String) {
         AlertDialog.Builder(this)
             .setTitle("Einrichtung senden – was soll das andere Gerät bekommen?")
-            .setItems(arrayOf(
+            .setItems((listOf(
                 "Alles wie bei mir",
                 "Genau auswählen: Playlists, Gruppen (TV, Filme, Serien), Favoriten …"
-            )) { _, w ->
+            ) + templates().map { "📋 Vorlage: ${it.optString("n")}" }).toTypedArray()) { _, w ->
                 val all = Pick(store.playlists().map { it.id }.toSet(), null, store.favLists().map { it.name }.toSet())
-                if (w == 0) askCodeThen(all) else pickPlaylists(code, all)
+                when (w) {
+                    0 -> askCodeThen(all)
+                    1 -> pickPlaylists(code, all)
+                    else -> templates().getOrNull(w - 2)?.let { templateMenu(it) }
+                }
             }.show()
     }
 
     private fun pickPlaylists(code: String, pick: Pick) {
         val pls = store.playlists()
         if (pls.size <= 1) { pickCountries(code, pick); return }
-        val checked = BooleanArray(pls.size) { true }
+        val checked = BooleanArray(pls.size) { pls[it].id in pick.playlists }
         Dialogs.multiChoice(this, "Welche Playlists?", pls.map { it.name }.toTypedArray(), checked) {
             pick.playlists = pls.filterIndexed { i, _ -> checked[i] }.map { it.id }.toSet()
             if (pick.playlists.isEmpty()) { Toast.makeText(this, "Mindestens eine Playlist wählen", Toast.LENGTH_LONG).show(); return@multiChoice }
@@ -208,14 +285,15 @@ class PlaylistActivity : Activity() {
     private fun pickCountries(code: String, pick: Pick) {
         val pid = Repo.playlistId
         if (pid == null || pid !in pick.playlists || Repo.groups.isEmpty()) { pickFavs(code, pick); return }
-        pickSection(code, "📺 TV", Repo.groups, store.hiddenGroups(pid)) { h ->
+        val tpl = pick.template != null
+        pickSection(code, "📺 TV", Repo.groups, pick.hidden["live"] ?: store.hiddenGroups(pid), tpl) { h ->
             h?.let { pick.hidden["live"] = it }
             val p = store.playlists().first { it.id == pid }
             loadVodNames(p, false) { movies ->
-                pickSection(code, "🎬 Filme", movies, store.hiddenGroups("$pid:movies")) { hm ->
+                pickSection(code, "🎬 Filme", movies, pick.hidden["movies"] ?: store.hiddenGroups("$pid:movies"), tpl) { hm ->
                     hm?.let { pick.hidden["movies"] = it }
                     loadVodNames(p, true) { series ->
-                        pickSection(code, "📺 Serien", series, store.hiddenGroups("$pid:series")) { hs ->
+                        pickSection(code, "📺 Serien", series, pick.hidden["series"] ?: store.hiddenGroups("$pid:series"), tpl) { hs ->
                             hs?.let { pick.hidden["series"] = it }
                             pickFavs(code, pick)
                         }
@@ -235,13 +313,13 @@ class PlaylistActivity : Activity() {
     }
 
     /** Ein Bereich (TV/Filme/Serien): wie bei mir, alles, nach Ländern (+ einzeln anpassen) oder komplett einzeln */
-    private fun pickSection(code: String, title: String, names: List<String>, mine: Set<String>, done: (Set<String>?) -> Unit) {
+    private fun pickSection(code: String, title: String, names: List<String>, mine: Set<String>, fromTemplate: Boolean, done: (Set<String>?) -> Unit) {
         if (names.isEmpty()) { done(null); return }
         val byCountry = LinkedHashMap<String, MutableList<String>>()
         names.forEach { g -> byCountry.getOrPut(Countries.code(g)) { mutableListOf() }.add(g) }
         val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { -(byCountry[it]?.size ?: 0) }))
         fun fineTune(visible: List<String>) {
-            val checked = BooleanArray(visible.size) { true }
+            val checked = BooleanArray(visible.size) { visible[it] !in mine || visible.all { g -> g in mine } }
             Dialogs.multiChoice(this, "$title – einzelne Gruppen (Haken = wird geschickt)", visible.toTypedArray(), checked) {
                 val keep = visible.filterIndexed { i, _ -> checked[i] }.toSet()
                 done(names.filter { it !in keep }.toSet())
@@ -250,7 +328,7 @@ class PlaylistActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("$title – was soll das andere Gerät sehen? (${names.size} Gruppen)")
             .setItems(arrayOf(
-                "Wie bei mir (${names.size - mine.count { it in names }} sichtbar)",
+                (if (fromTemplate) "Wie in der Vorlage" else "Wie bei mir") + " (${names.size - mine.count { it in names }} sichtbar)",
                 "Nach Ländern auswählen …",
                 "Einzelne Gruppen auswählen …",
                 "Alles",
@@ -281,11 +359,11 @@ class PlaylistActivity : Activity() {
 
     private fun pickFavs(code: String, pick: Pick) {
         val fl = store.favLists().filter { it.keys.isNotEmpty() }
-        if (fl.isEmpty()) { askCodeThen(pick); return }
-        val checked = BooleanArray(fl.size) { true }
+        if (fl.isEmpty()) { finishPick(pick); return }
+        val checked = BooleanArray(fl.size) { pick.template == null || fl[it].name in pick.favLists }
         Dialogs.multiChoice(this, "Welche Favoritenlisten?", fl.map { "★ ${it.name}  (${it.keys.size} Sender)" }.toTypedArray(), checked) {
             pick.favLists = fl.filterIndexed { i, _ -> checked[i] }.map { it.name }.toSet()
-            askCodeThen(pick)
+            finishPick(pick)
         }
     }
 
@@ -295,7 +373,7 @@ class PlaylistActivity : Activity() {
         val prefs = root.getJSONObject("prefs")
         val removedPids = store.playlists().map { it.id }.filter { it !in pick.playlists }
         prefs.keys().asSequence().toList().forEach { k ->
-            val personal = k.startsWith("recent_") || k.startsWith("pos_") || k.startsWith("dur_") || k == "recDir" || k == "lastBackup"
+            val personal = k.startsWith("recent_") || k.startsWith("pos_") || k.startsWith("dur_") || k == "recDir" || k == "lastBackup" || k == "send_templates"
             val ofRemoved = removedPids.any { k.endsWith(it) || k.contains("_$it") || k.startsWith("$it:") || k.contains("$it:") }
             if (personal || ofRemoved) prefs.remove(k)
         }

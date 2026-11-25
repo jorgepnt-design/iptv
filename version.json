@@ -1,6 +1,6 @@
 {
-  "versionCode": 60,
-  "versionName": "2.48",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=60",
-  "notes": "• Einrichtung senden: zuerst Playlists, Gruppen und Favoriten auswählen – der Gerätecode wird erst zum Schluss abgefragt"
+  "versionCode": 61,
+  "versionName": "2.49",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=61",
+  "notes": "• Einrichtung senden: Auswahl als Vorlage speichern (z. B. „Paulo – nur Portugal“)\n• Vorlagen später senden, ändern, umbenennen oder löschen"
 }
