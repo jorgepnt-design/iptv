@@ -15,7 +15,9 @@ class TextItem(val label: String, val count: String = "")
 class TextAdapter(
     private val onFocus: (Int) -> Unit = {},
     private val onClick: (Int) -> Unit,
-    private val onLongClick: (Int) -> Unit = {}
+    private val onLongClick: (Int) -> Unit = {},
+    /** ganzen Text zeigen (mehrzeilig) statt mit „…“ abzuschneiden */
+    private val wrap: Boolean = false
 ) : RecyclerView.Adapter<TextAdapter.VH>() {
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -40,6 +42,7 @@ class TextAdapter(
 
     override fun onBindViewHolder(h: VH, pos: Int) {
         val it = items[pos]
+        if (wrap) { h.label.maxLines = 4; h.label.ellipsize = null; h.label.textSize = 15f }
         h.label.text = it.label
         h.count.text = it.count
         h.itemView.isActivated = pos == activePos

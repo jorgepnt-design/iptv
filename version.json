@@ -1,6 +1,6 @@
 {
-  "versionCode": 51,
-  "versionName": "2.39",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=51",
-  "notes": "• OK lang auf einen Favoriten: ganz oben „✕ Entfernen“ – direkt abwählen ohne Umweg"
+  "versionCode": 52,
+  "versionName": "2.40",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=52",
+  "notes": "• Filme/Serien: Kategorienamen werden komplett angezeigt (mehrzeilig statt „…“)\n• Favoriten: OK lang → ganz oben „✕ Entfernen“"
 }

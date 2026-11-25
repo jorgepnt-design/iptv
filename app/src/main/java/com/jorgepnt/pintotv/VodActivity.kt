@@ -53,7 +53,8 @@ class VodActivity : Activity() {
         grid = findViewById(R.id.vodGrid)
         catAdapter = TextAdapter(
             onFocus = { pos -> catKeys.getOrNull(pos)?.let { k -> ui.removeCallbacksAndMessages(null); ui.postDelayed({ showCat(k) }, 150) } },
-            onClick = { pos -> catKeys.getOrNull(pos)?.let { showCat(it) }; focusGrid() }
+            onClick = { pos -> catKeys.getOrNull(pos)?.let { showCat(it) }; focusGrid() },
+            wrap = true
         )
         cats.layoutManager = LinearLayoutManager(this)
         cats.adapter = catAdapter
