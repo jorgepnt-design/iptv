@@ -113,4 +113,11 @@ class VodTest {
         org.junit.Assert.assertFalse(Vod.isVodUrl("http://s:80/u/p/1"))
         org.junit.Assert.assertFalse(Vod.isVodUrl("http://s/hls/stream.m3u8"))
     }
+
+    @org.junit.Test fun adultGroups() {
+        org.junit.Assert.assertEquals("XXX", Countries.code("XXX ✪ FOR ADULTS (18+)"))
+        org.junit.Assert.assertEquals("XXX", Countries.code("FOR ADULTS (18+)"))
+        org.junit.Assert.assertEquals("DE", Countries.code("DE | Sport"))
+        org.junit.Assert.assertEquals("PT", Countries.code("PT: Desporto"))
+    }
 }

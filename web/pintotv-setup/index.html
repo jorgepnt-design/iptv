@@ -30,6 +30,19 @@ summary::after{content:"＋";float:right;color:#4C8DFF}details[open] summary::af
 details ol{margin:0 0 14px;padding-left:22px;line-height:1.55;color:#d6dbe6}details li{margin-bottom:8px}
 details b{color:#fff}.k{background:#222630;border-radius:6px;padding:1px 6px;font-family:monospace;color:#9fc0ff}
 details a{color:#7FB0FF}
+.pk{background:#181B22;border:1px solid #2A3550;border-radius:12px;padding:12px;margin-top:6px}
+.pk .bar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.pk .bar button{width:auto;flex:1;margin:0;padding:9px 6px;font-size:14px;border-radius:9px;background:#222630}
+.pk .bar button.on{background:#4C8DFF}
+.pk input[type=search]{width:100%;box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid #2A3550;background:#0E1014;color:#fff;font-size:15px;margin-bottom:8px}
+.cn{border-top:1px solid #222630}
+.cn .h{display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer}
+.cn .h span.n{flex:1;font-weight:600}.cn .h span.c{color:#9aa3b5;font-size:13px}
+.cn .h span.a{color:#4C8DFF;width:16px;text-align:center}
+.cn .g{display:none;padding:0 0 8px 30px}.cn.open .g{display:block}
+.cn label{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:14px;color:#d6dbe6}
+input[type=checkbox]{width:20px;height:20px;accent-color:#4C8DFF;flex:none}
+#load{background:#222630;border:1px solid #4C8DFF}
 .hint{color:#6f788a;font-size:13px;margin-top:22px;line-height:1.5}
 </style>
 </head>
@@ -62,7 +75,9 @@ details a{color:#7FB0FF}
     <ol>
       <li>Unten den <b>Gerätecode</b> eintragen.</li>
       <li><b>Xtream</b>: Server-Adresse, Benutzername und Passwort vom Anbieter eintragen.<br><b>M3U</b>: den Playlist-Link eintragen.<br><b>Sicherung</b>: eine PintoTV-Sicherungsdatei (.json) hochladen – ersetzt alles auf dem Fernseher.</li>
-      <li>Optional bei <b>Länder</b> antippen, welche Länder angezeigt werden sollen (gilt für TV, Filme und Serien). Nichts ausgewählt = alles.</li>
+      <li>Optional <b>📋 Gruppen laden und auswählen</b>: alle Gruppen der Playlist erscheinen nach Land sortiert – für TV, Filme und Serien getrennt. Ganze Länder oder einzelne Gruppen an- bzw. abhaken, „🔞 Erwachsene aus“ blendet alle XXX-Gruppen aus. Abgewähltes wird auf dem Fernseher ausgeblendet.</li>
+      <li>Oder schneller ohne Laden: bei <b>Länder</b> nur die gewünschten Länder antippen.</li>
+      <li><b>Favoriten</b> gehen nur über die App (siehe „Alternative“ unten), weil diese Seite deine Favoriten nicht kennt.</li>
       <li><b>An den Fernseher senden</b> tippen.</li>
     </ol>
   </details>
@@ -107,9 +122,20 @@ details a{color:#7FB0FF}
     <div class="f"><label>Playlist-Adresse (M3U) *</label><input id="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://…/playlist.m3u"></div>
     <div class="f"><label>EPG-Adresse (optional)</label><input id="mepg" inputmode="url" autocapitalize="off" autocorrect="off"></div>
   </div>
+  <div id="groupsel">
+    <h2>Genau auswählen, was geschickt wird (optional)</h2>
+    <p class="small">Lädt alle Gruppen dieser Playlist (TV, Filme, Serien). Dann Häkchen setzen oder entfernen – Abgewähltes wird auf dem Fernseher ausgeblendet.</p>
+    <button id="load" type="button">📋 Gruppen laden und auswählen</button>
+    <div id="pk" class="pk" style="display:none">
+      <div class="bar" id="sec"></div>
+      <input type="search" id="flt" placeholder="Gruppe suchen …">
+      <div class="bar"><button type="button" id="allon">✓ Alle an</button><button type="button" id="alloff">✕ Alle aus</button><button type="button" id="xxxoff">🔞 Erwachsene aus</button></div>
+      <div id="list"></div>
+    </div>
+  </div>
   <div id="countries">
     <h2>Länder (optional)</h2>
-    <p class="small">Nur diese Länder werden auf dem Fernseher angezeigt – für TV, Filme und Serien. Nichts ausgewählt = alles.</p>
+    <p class="small">Schnelle Alternative ohne Laden: nur diese Länder werden angezeigt – für TV, Filme und Serien. Nichts ausgewählt = alles.</p>
     <div class="cc" id="cc"></div>
   </div>
   <div class="pane" id="p-b">
@@ -129,7 +155,9 @@ document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   tab = b.dataset.t;
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'p-' + tab));
-  $('countries').style.display = tab === 'b' ? 'none' : 'block';
+  $('countries').style.display = tab === 'b' || loaded ? 'none' : 'block';
+  $('groupsel').style.display = tab === 'b' ? 'none' : 'block';
+  resetPicker();
 });
 function norm(v) {
   let s = (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -143,6 +171,78 @@ CC.forEach(([c, n]) => {
   b.onclick = () => { chosen.has(c) ? chosen.delete(c) : chosen.add(c); b.classList.toggle('on', chosen.has(c)); };
   $('cc').appendChild(b);
 });
+
+// ---------- Gruppen genau auswählen ----------
+const NAMES = Object.fromEntries(CC);
+Object.assign(NAMES, { GER: 'Deutschland', GB: 'Großbritannien', USA: 'USA', XXX: '🔞 Erwachsene (XXX)', '?': 'Sonstige / ohne Land', SE: 'Schweden', NO: 'Norwegen', DK: 'Dänemark', FI: 'Finnland', CZ: 'Tschechien', HU: 'Ungarn', BG: 'Bulgarien', CA: 'Kanada', MX: 'Mexiko', LAT: 'Lateinamerika', AF: 'Afrika', KU: 'Kurdisch', IR: 'Iran', IL: 'Israel', MK: 'Nordmazedonien', SI: 'Slowenien', IN: 'Indien', PK: 'Pakistan' });
+const ADULT = /xxx|adult|18\+|\+18|porn|erotik|erotic|for adults|🔞/i;
+const PREFIX = /^[\s|\[(★✪•]*([A-Za-z]{2,3})\s*[^\p{L}\p{N}\s]/u;
+const WORDS = [['deutsch','DE'],['germany','DE'],['german','DE'],['portug','PT'],['brasil','BR'],['brazil','BR'],['españa','ES'],['spain','ES'],['france','FR'],['italia','IT'],['italy','IT'],['turk','TR'],['türk','TR'],['poland','PL'],['polska','PL'],['österreich','AT'],['austria','AT'],['schweiz','CH'],['swiss','CH'],['england','UK'],['united kingdom','UK'],['arab','AR']];
+function ccode(g) {
+  if (ADULT.test(g)) return 'XXX';
+  const m = g.match(PREFIX); if (m) { const c = m[1].toUpperCase(); return c === 'GER' ? 'DE' : c === 'GB' ? 'UK' : c === 'USA' ? 'US' : c; }
+  const l = g.toLowerCase(); const w = WORDS.find(([k]) => l.includes(k)); return w ? w[1] : '?';
+}
+const SECS = [['live', 'TV'], ['movies', 'Filme'], ['series', 'Serien']];
+let loaded = null, off = { live: new Set(), movies: new Set(), series: new Set() }, sec = 'live';
+function resetPicker() { loaded = null; $('pk').style.display = 'none'; $('load').style.display = 'block'; $('countries').style.display = tab === 'b' ? 'none' : 'block'; }
+['server', 'user', 'pass', 'url'].forEach((id) => $(id).addEventListener('change', resetPicker));
+$('load').onclick = async () => {
+  let body;
+  if (tab === 'x') { body = { type: 'xtream', server: $('server').value.trim(), user: $('user').value.trim(), pass: $('pass').value.trim() }; if (!body.server || !body.user) return status('Bitte zuerst Server und Benutzername eintragen.', false); }
+  else { body = { type: 'm3u', url: $('url').value.trim() }; if (!body.url) return status('Bitte zuerst die Playlist-Adresse eintragen.', false); }
+  $('load').disabled = true; status('Gruppen werden beim Anbieter geladen … (kann bis zu 1 Minute dauern)', true);
+  try {
+    const r = await fetch('/api/categories', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('Fehler ' + r.status));
+    loaded = d; off = { live: new Set(), movies: new Set(), series: new Set() };
+    sec = d.live.length ? 'live' : d.movies.length ? 'movies' : 'series';
+    $('pk').style.display = 'block'; $('load').style.display = 'none'; $('countries').style.display = 'none';
+    status('✓ ' + d.live.length + ' TV-Gruppen, ' + d.movies.length + ' Film- und ' + d.series.length + ' Serien-Kategorien geladen. Alles ist angehakt.', true);
+    render();
+  } catch (e) { status(e.message, false); }
+  $('load').disabled = false;
+};
+const open = new Set();
+function render() {
+  $('sec').innerHTML = '';
+  SECS.forEach(([k, n]) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.textContent = n + ' (' + (loaded[k].length - off[k].size) + '/' + loaded[k].length + ')';
+    b.className = k === sec ? 'on' : ''; b.onclick = () => { sec = k; render(); }; $('sec').appendChild(b);
+  });
+  const f = $('flt').value.trim().toLowerCase();
+  const groups = loaded[sec].filter((g) => !f || g.toLowerCase().includes(f));
+  const by = {}; groups.forEach((g) => (by[ccode(g)] ||= []).push(g));
+  const codes = Object.keys(by).sort((a, b) => (a === '?') - (b === '?') || (a === 'XXX') - (b === 'XXX') || by[b].length - by[a].length);
+  const L = $('list'); L.innerHTML = '';
+  if (!groups.length) { L.innerHTML = '<p class="small">Keine Gruppen.</p>'; return; }
+  codes.forEach((c) => {
+    const gs = by[c], on = gs.filter((g) => !off[sec].has(g)).length;
+    const box = document.createElement('div'); box.className = 'cn' + (open.has(sec + c) || f ? ' open' : '');
+    const h = document.createElement('div'); h.className = 'h';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on === gs.length; cb.indeterminate = on > 0 && on < gs.length;
+    cb.onclick = (e) => { e.stopPropagation(); gs.forEach((g) => cb.checked ? off[sec].delete(g) : off[sec].add(g)); render(); };
+    h.innerHTML = '<span class="a">' + (box.className.includes('open') ? '▾' : '▸') + '</span>';
+    h.prepend(cb);
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = NAMES[c] || c; h.appendChild(n);
+    const cnt = document.createElement('span'); cnt.className = 'c'; cnt.textContent = on + '/' + gs.length; h.appendChild(cnt);
+    h.onclick = () => { open.has(sec + c) ? open.delete(sec + c) : open.add(sec + c); render(); };
+    box.appendChild(h);
+    const gl = document.createElement('div'); gl.className = 'g';
+    gs.forEach((g) => {
+      const lb = document.createElement('label'); const x = document.createElement('input'); x.type = 'checkbox'; x.checked = !off[sec].has(g);
+      x.onchange = () => { x.checked ? off[sec].delete(g) : off[sec].add(g); render(); };
+      lb.appendChild(x); lb.appendChild(document.createTextNode(g)); gl.appendChild(lb);
+    });
+    box.appendChild(gl); L.appendChild(box);
+  });
+}
+$('flt').oninput = () => render();
+$('allon').onclick = () => { off[sec].clear(); render(); };
+$('alloff').onclick = () => { loaded[sec].forEach((g) => off[sec].add(g)); render(); };
+$('xxxoff').onclick = () => { SECS.forEach(([k]) => loaded[k].forEach((g) => { if (ccode(g) === 'XXX') off[k].add(g); })); render(); };
 const q = new URLSearchParams(location.search).get('code');
 if (q) $('code').value = norm(q) || q;
 function status(t, ok) { $('st').textContent = t; $('st').className = ok ? 'ok' : 'err'; }
@@ -163,7 +263,8 @@ $('send').onclick = async () => {
     if (!payload.prefs) return status('Das ist keine PintoTV-Sicherung.', false);
     kind = 'backup';
   }
-  if (kind === 'playlist' && chosen.size) payload.countries = [...chosen];
+  if (kind === 'playlist' && loaded) payload.hidden = { live: [...off.live], movies: [...off.movies], series: [...off.series] };
+  else if (kind === 'playlist' && chosen.size) payload.countries = [...chosen];
   $('send').disabled = true; status('Wird gesendet …', true);
   try {
     const r = await fetch('/api/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, kind, payload }) });

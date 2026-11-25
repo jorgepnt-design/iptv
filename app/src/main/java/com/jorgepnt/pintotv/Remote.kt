@@ -114,7 +114,8 @@ object Remote {
                 .show()
             return
         }
-        val pairs = items.filter { it.kind == "playlist" }.map { toPlaylist(it.payload) to it.payload.optJSONArray("countries") }
+        val plItems = items.filter { it.kind == "playlist" }
+        val pairs = plItems.map { toPlaylist(it.payload) to it.payload.optJSONArray("countries") }
         val pls = pairs.map { it.first }
         if (pls.isEmpty()) return
         AlertDialog.Builder(a)
@@ -122,10 +123,19 @@ object Remote {
             .setMessage("Neue Playlist${if (pls.size > 1) "s" else ""} für dieses Gerät:\n\n" +
                 pairs.joinToString("\n") { (p, c) ->
                     "• ${p.name} (${if (p.type == "xtream") "Xtream" else "M3U"})" +
-                        (if (c != null && c.length() > 0) "\n   Länder: " + (0 until c.length()).joinToString(", ") { c.getString(it) } else "")
+                        (if (c != null && c.length() > 0) "\n   Länder: " + (0 until c.length()).joinToString(", ") { c.getString(it) } else "") +
+                        (plItems.getOrNull(pairs.indexOfFirst { it.first === p })?.payload?.optJSONObject("hidden")?.let { "\n   Mit eigener Gruppen-Auswahl" } ?: "")
                 } + "\n\nHinzufügen?")
             .setPositiveButton("Hinzufügen") { _, _ ->
                 // Länderauswahl für TV, Filme und Serien vormerken
+                // genau ausgewählte Gruppen: alles Abgewählte ausblenden
+                pairs.forEachIndexed { i, (p, _) ->
+                    val h = plItems[i].payload.optJSONObject("hidden") ?: return@forEachIndexed
+                    fun set(key: String, name: String) = h.optJSONArray(name)?.let { a ->
+                        store.setHiddenGroups(key, (0 until a.length()).map { a.getString(it) }.toSet())
+                    }
+                    set(p.id, "live"); set(p.id + ":movies", "movies"); set(p.id + ":series", "series")
+                }
                 pairs.forEach { (p, c) ->
                     if (c != null && c.length() > 0) {
                         val set = (0 until c.length()).map { c.getString(it).uppercase() }.toSet()

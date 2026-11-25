@@ -70,7 +70,11 @@ object Countries {
         "swiss" to "CH", "england" to "UK", "united kingdom" to "UK", "arab" to "AR"
     )
 
+    /** Erwachsenen-Inhalte erkennen – eigene „Länder“-Gruppe, damit man sie gezielt ein-/ausblenden kann */
+    private val adult = Regex("xxx|adult|18\\+|\\+18|porn|erotik|erotic|for adults|🔞", RegexOption.IGNORE_CASE)
+
     fun code(group: String): String {
+        if (adult.containsMatchIn(group)) return "XXX"
         prefix.find(group)?.let { return it.groupValues[1].uppercase() }
         val g = group.lowercase()
         words.firstOrNull { g.contains(it.first) }?.let { return it.second }
@@ -79,6 +83,7 @@ object Countries {
 
     fun label(code: String) = when (code) {
         "?" -> "Sonstige / ohne Land"
+        "XXX" -> "🔞 Erwachsene (XXX)"
         else -> names[code]?.let { "$it ($code)" } ?: code
     }
 }
