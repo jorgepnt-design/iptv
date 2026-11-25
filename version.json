@@ -1,6 +1,6 @@
 {
-  "versionCode": 65,
-  "versionName": "2.53",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=65",
-  "notes": "• Gruppen mit Flaggen und Länder-Überschriften (🇩🇪 DEUTSCHLAND …), Anzahl als kleines Kästchen\n• Senderlogos in einheitlichen Kästchen, ohne Logo die Anfangsbuchstaben\n• „Keine Informationen“ entfällt – Liste ruhiger\n• Vorschau rechts mit Logo, „Keine Programminformationen“ klein\n• Markierte Zeile mit hellem Rahmen und leicht vergrößert"
+  "versionCode": 66,
+  "versionName": "2.54",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=66",
+  "notes": "• Info-Leiste beim Umschalten verschwindet schneller (2,5 statt 5 Sekunden)"
 }

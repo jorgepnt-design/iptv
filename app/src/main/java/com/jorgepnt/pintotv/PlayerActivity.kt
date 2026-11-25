@@ -1592,7 +1592,7 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.bannerDate).text = Fmt.day(now)
         banner.visibility = View.VISIBLE
         ui.removeCallbacks(hideBannerTask)
-        ui.postDelayed(hideBannerTask, 5000)
+        ui.postDelayed(hideBannerTask, 2500)
     }
 
     private fun hideBanner() { banner.visibility = View.GONE }
