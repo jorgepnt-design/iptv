@@ -389,6 +389,7 @@ class PlayerActivity : Activity() {
 
     private fun buildGroups() {
         val pid = playlist?.id ?: return
+        store.applyAllowedCountries(pid, Repo.groups)
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }

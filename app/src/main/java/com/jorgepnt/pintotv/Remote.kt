@@ -114,13 +114,26 @@ object Remote {
                 .show()
             return
         }
-        val pls = items.filter { it.kind == "playlist" }.map { toPlaylist(it.payload) }
+        val pairs = items.filter { it.kind == "playlist" }.map { toPlaylist(it.payload) to it.payload.optJSONArray("countries") }
+        val pls = pairs.map { it.first }
         if (pls.isEmpty()) return
         AlertDialog.Builder(a)
             .setTitle("🌐 Fern-Einrichtung empfangen")
             .setMessage("Neue Playlist${if (pls.size > 1) "s" else ""} für dieses Gerät:\n\n" +
-                pls.joinToString("\n") { "• ${it.name} (${if (it.type == "xtream") "Xtream" else "M3U"})" } + "\n\nHinzufügen?")
-            .setPositiveButton("Hinzufügen") { _, _ -> onPlaylists(pls) }
+                pairs.joinToString("\n") { (p, c) ->
+                    "• ${p.name} (${if (p.type == "xtream") "Xtream" else "M3U"})" +
+                        (if (c != null && c.length() > 0) "\n   Länder: " + (0 until c.length()).joinToString(", ") { c.getString(it) } else "")
+                } + "\n\nHinzufügen?")
+            .setPositiveButton("Hinzufügen") { _, _ ->
+                // Länderauswahl für TV, Filme und Serien vormerken
+                pairs.forEach { (p, c) ->
+                    if (c != null && c.length() > 0) {
+                        val set = (0 until c.length()).map { c.getString(it).uppercase() }.toSet()
+                        listOf(p.id, p.id + ":movies", p.id + ":series").forEach { store.setAllowedCountries(it, set) }
+                    }
+                }
+                onPlaylists(pls)
+            }
             .setNegativeButton("Verwerfen", null)
             .show()
     }

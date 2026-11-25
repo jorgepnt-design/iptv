@@ -20,6 +20,16 @@ h2{font-size:17px;margin:26px 0 10px;color:#cfd6e4}
 button{display:block;width:100%;box-sizing:border-box;text-align:center;padding:16px;border:0;border-radius:12px;background:#4C8DFF;color:#fff;font-size:18px;font-weight:700;margin-top:10px;cursor:pointer}
 button:disabled{opacity:.5}
 #st{margin-top:16px;font-weight:700;line-height:1.4}.ok{color:#5BE08A}.err{color:#FF6B6B}
+.cc{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.cc button{width:auto;margin:0;padding:9px 12px;border-radius:20px;background:#222630;font-size:14px;font-weight:600}
+.cc button.on{background:#4C8DFF}
+.small{color:#9aa3b5;font-size:13px;margin:0 0 10px;line-height:1.4}
+details{background:#181B22;border:1px solid #2A3550;border-radius:12px;margin:0 0 10px;padding:0 16px}
+summary{cursor:pointer;padding:14px 0;font-weight:700;font-size:16px;list-style:none}
+summary::after{content:"＋";float:right;color:#4C8DFF}details[open] summary::after{content:"−"}
+details ol{margin:0 0 14px;padding-left:22px;line-height:1.55;color:#d6dbe6}details li{margin-bottom:8px}
+details b{color:#fff}.k{background:#222630;border-radius:6px;padding:1px 6px;font-family:monospace;color:#9fc0ff}
+details a{color:#7FB0FF}
 .hint{color:#6f788a;font-size:13px;margin-top:22px;line-height:1.5}
 </style>
 </head>
@@ -28,6 +38,53 @@ button:disabled{opacity:.5}
   <h1>Pinto<span>TV</span></h1>
   <p class="sub">Einen Fernseher aus der Ferne einrichten. Den Gerätecode zeigt PintoTV auf dem Fernseher an (Playlists-Bildschirm, oben).</p>
 
+  <h2>So funktioniert's</h2>
+  <details>
+    <summary>1. PintoTV auf dem Fernseher installieren</summary>
+    <ol>
+      <li><b>Fire TV:</b> Zuerst die kostenlose App <b>Downloader</b> aus dem Amazon App Store installieren. Dann Einstellungen → Mein Fire TV → Entwickleroptionen → <b>Unbekannte Apps installieren</b> → Downloader einschalten. (Fehlen die Entwickleroptionen: Mein Fire TV → Info → 7× auf den Gerätenamen drücken.)</li>
+      <li><b>NVIDIA Shield / Android TV:</b> Die App <b>Downloader</b> aus dem Play Store installieren. Dann Einstellungen → Geräteeinstellungen → Sicherheit &amp; Einschränkungen → <b>Unbekannte Quellen</b> → Downloader einschalten.</li>
+      <li>In Downloader diese Adresse eingeben und die App installieren:<br><span class="k">github.com/jorgepnt-design/iptv/raw/main/pintotv.apk</span></li>
+      <li>PintoTV öffnen. Spätere Updates kommen über <b>Menü → Nach Updates suchen</b>.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>2. Gerätecode am Fernseher ablesen</summary>
+    <ol>
+      <li>In PintoTV den Bildschirm <b>Playlists</b> öffnen (beim ersten Start erscheint er von selbst, sonst: Menü → Playlists).</li>
+      <li>Ganz oben steht der Gerätecode, z. B. <span class="k">PT-7K3F-92XA</span>.</li>
+      <li>Größer mit QR-Code: <b>⇄ Übertragen → 🌐 Fern-Einrichtung: Gerätecode anzeigen</b>. Den QR-Code mit dem Handy scannen – dann ist der Code hier schon eingetragen.</li>
+      <li>Den Code an die Person schicken, die den Fernseher einrichtet.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>3. Einrichtung hier senden</summary>
+    <ol>
+      <li>Unten den <b>Gerätecode</b> eintragen.</li>
+      <li><b>Xtream</b>: Server-Adresse, Benutzername und Passwort vom Anbieter eintragen.<br><b>M3U</b>: den Playlist-Link eintragen.<br><b>Sicherung</b>: eine PintoTV-Sicherungsdatei (.json) hochladen – ersetzt alles auf dem Fernseher.</li>
+      <li>Optional bei <b>Länder</b> antippen, welche Länder angezeigt werden sollen (gilt für TV, Filme und Serien). Nichts ausgewählt = alles.</li>
+      <li><b>An den Fernseher senden</b> tippen.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>4. Am Fernseher übernehmen</summary>
+    <ol>
+      <li>PintoTV auf dem Fernseher öffnen (oder neu starten). Ist der Playlists-Bildschirm offen, kommt die Einrichtung nach spätestens 15 Sekunden.</li>
+      <li>Es erscheint „🌐 Fern-Einrichtung empfangen“ → <b>Hinzufügen</b> bzw. <b>Übernehmen</b>.</li>
+      <li>Die Sender werden geladen – fertig. Die Daten werden danach hier gelöscht.</li>
+      <li>Nichts angekommen? Am Fernseher <b>⇄ Übertragen → Gerätecode anzeigen → Jetzt abrufen</b> drücken und prüfen, ob der Code stimmt.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>Alternative: direkt aus der eigenen PintoTV-App senden</summary>
+    <ol>
+      <li>Auf deinem Fernseher: <b>Playlists → ⇄ Übertragen → 📤 Meine Einrichtung an Gerätecode senden</b>.</li>
+      <li>Code des anderen Geräts eingeben und wählen: <b>Alles wie bei mir</b> oder <b>Auswählen</b> (Playlists, Länder, Favoritenlisten).</li>
+      <li>Dein Verlauf und deine Wiedergabe-Positionen werden nie mitgeschickt.</li>
+    </ol>
+  </details>
+
+  <h2>Einrichtung senden</h2>
   <div class="f"><label>Gerätecode des Fernsehers *</label>
     <input id="code" placeholder="PT-XXXX-XXXX" autocapitalize="characters" autocorrect="off" autocomplete="off" maxlength="14"></div>
 
@@ -50,6 +107,11 @@ button:disabled{opacity:.5}
     <div class="f"><label>Playlist-Adresse (M3U) *</label><input id="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://…/playlist.m3u"></div>
     <div class="f"><label>EPG-Adresse (optional)</label><input id="mepg" inputmode="url" autocapitalize="off" autocorrect="off"></div>
   </div>
+  <div id="countries">
+    <h2>Länder (optional)</h2>
+    <p class="small">Nur diese Länder werden auf dem Fernseher angezeigt – für TV, Filme und Serien. Nichts ausgewählt = alles.</p>
+    <div class="cc" id="cc"></div>
+  </div>
   <div class="pane" id="p-b">
     <p class="sub">Eine PintoTV-Sicherung (.json) mit allen Playlists, Favoriten und Einstellungen. Sie ersetzt die Einrichtung auf dem Fernseher.</p>
     <div class="f"><label>Sicherungsdatei</label><input type="file" id="file" accept=".json,application/json"></div>
@@ -67,12 +129,20 @@ document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   tab = b.dataset.t;
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'p-' + tab));
+  $('countries').style.display = tab === 'b' ? 'none' : 'block';
 });
 function norm(v) {
   let s = (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (s.startsWith('PT') && s.length === 10) s = s.slice(2);
   return s.length === 8 ? 'PT-' + s.slice(0, 4) + '-' + s.slice(4) : null;
 }
+const CC = [['DE','Deutschland'],['AT','Österreich'],['CH','Schweiz'],['PT','Portugal'],['BR','Brasilien'],['ES','Spanien'],['FR','Frankreich'],['IT','Italien'],['UK','Großbritannien'],['US','USA'],['NL','Niederlande'],['BE','Belgien'],['PL','Polen'],['TR','Türkei'],['GR','Griechenland'],['RO','Rumänien'],['HR','Kroatien'],['RS','Serbien'],['BA','Bosnien'],['AL','Albanien'],['EX','Ex-Jugoslawien'],['AR','Arabisch'],['RU','Russland'],['UA','Ukraine'],['?','Sonstige / ohne Land']];
+const chosen = new Set();
+CC.forEach(([c, n]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = n;
+  b.onclick = () => { chosen.has(c) ? chosen.delete(c) : chosen.add(c); b.classList.toggle('on', chosen.has(c)); };
+  $('cc').appendChild(b);
+});
 const q = new URLSearchParams(location.search).get('code');
 if (q) $('code').value = norm(q) || q;
 function status(t, ok) { $('st').textContent = t; $('st').className = ok ? 'ok' : 'err'; }
@@ -93,6 +163,7 @@ $('send').onclick = async () => {
     if (!payload.prefs) return status('Das ist keine PintoTV-Sicherung.', false);
     kind = 'backup';
   }
+  if (kind === 'playlist' && chosen.size) payload.countries = [...chosen];
   $('send').disabled = true; status('Wird gesendet …', true);
   try {
     const r = await fetch('/api/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, kind, payload }) });

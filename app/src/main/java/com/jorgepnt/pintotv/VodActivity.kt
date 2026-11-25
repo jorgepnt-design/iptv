@@ -184,6 +184,7 @@ class VodActivity : Activity() {
     }
 
     private fun buildCats() {
+        store.applyAllowedCountries(hiddenKey, catalog.categories.map { it.name })
         hidden = store.hiddenGroups(hiddenKey)
         val hiddenIds = catalog.categories.filter { it.name in hidden }.map { it.id }.toSet()
         visibleItems = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }

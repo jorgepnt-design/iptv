@@ -216,6 +216,20 @@ class Store(ctx: Context) {
     }
 
     /** ausgeblendete Gruppen je Playlist */
+    /** Länderauswahl aus der Fern-Einrichtung vormerken (wird beim ersten Laden angewendet) */
+    fun setAllowedCountries(key: String, codes: Set<String>) = sp.edit().putStringSet("allowc_$key", codes).commit()
+
+    /** vorgemerkte Länderauswahl anwenden: alle anderen Gruppen/Kategorien ausblenden */
+    fun applyAllowedCountries(key: String, names: List<String>): Boolean {
+        if (names.isEmpty()) return false
+        val raw = sp.getStringSet("allowc_$key", null) ?: return false
+        val a = raw.toMutableSet()
+        if ("DE" in a) a.add("GER"); if ("UK" in a) a.add("GB"); if ("US" in a) a.add("USA")
+        setHiddenGroups(key, names.filter { Countries.code(it) !in a }.toSet())
+        sp.edit().remove("allowc_$key").commit()
+        return true
+    }
+
     fun hiddenGroups(pid: String): Set<String> = sp.getStringSet("hidden_$pid", emptySet())!!.toSet()
     fun setHiddenGroups(pid: String, groups: Set<String>) = sp.edit().putStringSet("hidden_$pid", groups).commit()
 

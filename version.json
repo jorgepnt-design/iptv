@@ -1,6 +1,6 @@
 {
-  "versionCode": 56,
-  "versionName": "2.44",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=56",
-  "notes": "• Einrichtung an Gerätecode senden: auswählen, welche Playlists, Länder (TV, Filme, Serien) und Favoritenlisten der andere bekommt\n• Eigener Verlauf und Wiedergabe-Positionen werden nicht mitgeschickt"
+  "versionCode": 57,
+  "versionName": "2.45",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=57",
+  "notes": "• Fern-Einrichtung: Länderauswahl von pintotv-setup.vercel.app wird übernommen (TV, Filme, Serien)\n• Einrichtung an Gerätecode senden mit Auswahl von Playlists, Ländern und Favoriten"
 }
