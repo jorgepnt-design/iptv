@@ -282,28 +282,47 @@ class PlaylistActivity : Activity() {
         }
     }
 
+    /** für jede gewählte Playlist: TV, Filme und Serien auswählen (Gruppen werden direkt geladen) */
     private fun pickCountries(code: String, pick: Pick) {
-        val pid = Repo.playlistId
-        if (pid == null || pid !in pick.playlists || Repo.groups.isEmpty()) { pickFavs(code, pick); return }
+        val pls = store.playlists().filter { it.id in pick.playlists }
         val tpl = pick.template != null
-        pickSection(code, "📺 TV", Repo.groups, pick.hidden["live"] ?: store.hiddenGroups(pid), tpl) { h ->
-            h?.let { pick.hidden["live"] = it }
-            val p = store.playlists().first { it.id == pid }
-            loadVodNames(p, false) { movies ->
-                pickSection(code, "🎬 Filme", movies, pick.hidden["movies"] ?: store.hiddenGroups("$pid:movies"), tpl) { hm ->
-                    hm?.let { pick.hidden["movies"] = it }
-                    loadVodNames(p, true) { series ->
-                        pickSection(code, "📺 Serien", series, pick.hidden["series"] ?: store.hiddenGroups("$pid:series"), tpl) { hs ->
-                            hs?.let { pick.hidden["series"] = it }
-                            pickFavs(code, pick)
+        fun step(i: Int) {
+            if (i >= pls.size) { pickFavs(code, pick); return }
+            val p = pls[i]
+            val tag = if (pls.size > 1) " · ${p.name}" else ""
+            val t = Toast.makeText(this, "Gruppen von „${p.name}“ werden geladen …", Toast.LENGTH_LONG).also { it.show() }
+            scope.launch {
+                val live = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        if (Repo.playlistId == p.id && Repo.groups.isNotEmpty()) Repo.groups
+                        else Repo.fetch(this@PlaylistActivity, p, store.streamFormat, false, null).channels.map { it.group }.distinct()
+                    }
+                } catch (e: Exception) { emptyList() }
+                t.cancel()
+                if (live.isEmpty()) Toast.makeText(this@PlaylistActivity, "TV-Gruppen von „${p.name}“ konnten nicht geladen werden", Toast.LENGTH_LONG).show()
+                pickSection(code, "📺 TV$tag", live, pick.hidden["${p.id}|live"] ?: store.hiddenGroups(p.id), tpl) { h ->
+                    h?.let { pick.hidden["${p.id}|live"] = it }
+                    // Filme/Serien: bei Xtream immer, bei M3U nur für die gerade geladene Playlist
+                    val vodOk = p.type == "xtream" || Repo.playlistId == p.id
+                    loadVodNames(p, false, vodOk) { movies ->
+                        pickSection(code, "🎬 Filme$tag", movies, pick.hidden["${p.id}|movies"] ?: store.hiddenGroups("${p.id}:movies"), tpl) { hm ->
+                            hm?.let { pick.hidden["${p.id}|movies"] = it }
+                            loadVodNames(p, true, vodOk) { series ->
+                                pickSection(code, "📺 Serien$tag", series, pick.hidden["${p.id}|series"] ?: store.hiddenGroups("${p.id}:series"), tpl) { hs ->
+                                    hs?.let { pick.hidden["${p.id}|series"] = it }
+                                    step(i + 1)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+        step(0)
     }
 
-    private fun loadVodNames(p: Playlist, series: Boolean, then: (List<String>) -> Unit) {
+    private fun loadVodNames(p: Playlist, series: Boolean, ok: Boolean, then: (List<String>) -> Unit) {
+        if (!ok) { then(emptyList()); return }
         val t = Toast.makeText(this, if (series) "Serien-Kategorien werden geladen …" else "Film-Kategorien werden geladen …", Toast.LENGTH_LONG).also { it.show() }
         scope.launch {
             val names = try { Vod.catalog(this@PlaylistActivity, p, series, null).categories.map { it.name } } catch (e: Exception) { emptyList() }
@@ -388,13 +407,12 @@ class PlaylistActivity : Activity() {
         }
         if (favs.length() == 0) favs.put(JSONObject().put("n", "Favoriten").put("k", JSONArray()))
         prefs.put("favlists", JSONObject().put("t", "s").put("v", favs.toString()))
-        // genaue Auswahl je Bereich
-        val pid = Repo.playlistId
-        if (pid != null) {
-            fun put(key: String, h: Set<String>) = prefs.put("hidden_$key", JSONObject().put("t", "set").put("v", JSONArray(h.toList())))
-            pick.hidden["live"]?.let { put(pid, it) }
-            pick.hidden["movies"]?.let { put("$pid:movies", it) }
-            pick.hidden["series"]?.let { put("$pid:series", it) }
+        // genaue Auswahl je Playlist und Bereich
+        pick.hidden.forEach { (k, h) ->
+            val parts = k.split("|")
+            if (parts.size != 2) return@forEach
+            val key = when (parts[1]) { "live" -> parts[0]; "movies" -> parts[0] + ":movies"; else -> parts[0] + ":series" }
+            prefs.put("hidden_$key", JSONObject().put("t", "set").put("v", JSONArray(h.toList())))
         }
         root.toString()
     }

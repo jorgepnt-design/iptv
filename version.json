@@ -1,6 +1,6 @@
 {
-  "versionCode": 61,
-  "versionName": "2.49",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=61",
-  "notes": "• Einrichtung senden: Auswahl als Vorlage speichern (z. B. „Paulo – nur Portugal“)\n• Vorlagen später senden, ändern, umbenennen oder löschen"
+  "versionCode": 62,
+  "versionName": "2.50",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=62",
+  "notes": "• Einrichtung senden → Genau auswählen: Länder/Gruppen-Auswahl erscheint jetzt immer (Gruppen werden direkt geladen)\n• Bei mehreren Playlists für jede Playlist einzeln"
 }
