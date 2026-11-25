@@ -1,6 +1,6 @@
 {
-  "versionCode": 59,
-  "versionName": "2.47",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=59",
-  "notes": "• Einrichtung an Gerätecode senden → „Genau auswählen“: für TV, Filme und Serien jeweils nach Ländern, einzelne Gruppen, alles oder alles außer 🔞 Erwachsene\n• Danach Favoritenlisten auswählen"
+  "versionCode": 60,
+  "versionName": "2.48",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=60",
+  "notes": "• Einrichtung senden: zuerst Playlists, Gruppen und Favoriten auswählen – der Gerätecode wird erst zum Schluss abgefragt"
 }

@@ -153,20 +153,23 @@ class PlaylistActivity : Activity() {
             .show()
     }
 
-    private fun sendToCode() {
+    /** Erst auswählen, was geschickt wird – zum Schluss den Gerätecode eingeben */
+    private fun sendToCode() = chooseScope("")
+
+    private fun askCodeThen(pick: Pick) {
         val input = EditText(this).apply {
             hint = "PT-XXXX-XXXX"; isSingleLine = true
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
         }
         AlertDialog.Builder(this)
-            .setTitle("Meine Einrichtung an Gerätecode senden")
-            .setMessage("Alle Playlists, Favoriten und Einstellungen dieses Fernsehers werden an das andere Gerät geschickt und ersetzen dort die Einrichtung.\n\nGerätecode des anderen Geräts:")
+            .setTitle("Gerätecode des anderen Geräts")
+            .setMessage("Die Auswahl ist fertig. Jetzt den Gerätecode eingeben – er steht auf dem anderen Fernseher im Playlists-Bildschirm oben.\n\nDie Einrichtung ersetzt dort alles.")
             .setView(input)
             .setPositiveButton("Senden") { _, _ ->
                 val code = Remote.normalize(input.text.toString())
-                if (code == null) { Toast.makeText(this, "Ungültiger Gerätecode", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-                if (code == Remote.deviceCode(this)) { Toast.makeText(this, "Das ist der Code dieses Geräts", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-                chooseScope(code)
+                if (code == null) { Toast.makeText(this, "Ungültiger Gerätecode", Toast.LENGTH_LONG).show(); askCodeThen(pick); return@setPositiveButton }
+                if (code == Remote.deviceCode(this)) { Toast.makeText(this, "Das ist der Code dieses Geräts", Toast.LENGTH_LONG).show(); askCodeThen(pick); return@setPositiveButton }
+                send(code, pick)
             }
             .setNegativeButton("Abbrechen", null)
             .show()
@@ -181,13 +184,13 @@ class PlaylistActivity : Activity() {
 
     private fun chooseScope(code: String) {
         AlertDialog.Builder(this)
-            .setTitle("Was soll $code bekommen?")
+            .setTitle("Einrichtung senden – was soll das andere Gerät bekommen?")
             .setItems(arrayOf(
                 "Alles wie bei mir",
                 "Genau auswählen: Playlists, Gruppen (TV, Filme, Serien), Favoriten …"
             )) { _, w ->
                 val all = Pick(store.playlists().map { it.id }.toSet(), null, store.favLists().map { it.name }.toSet())
-                if (w == 0) send(code, all) else pickPlaylists(code, all)
+                if (w == 0) askCodeThen(all) else pickPlaylists(code, all)
             }.show()
     }
 
@@ -239,13 +242,13 @@ class PlaylistActivity : Activity() {
         val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { -(byCountry[it]?.size ?: 0) }))
         fun fineTune(visible: List<String>) {
             val checked = BooleanArray(visible.size) { true }
-            Dialogs.multiChoice(this, "$title – einzelne Gruppen (Haken = $code bekommt sie)", visible.toTypedArray(), checked) {
+            Dialogs.multiChoice(this, "$title – einzelne Gruppen (Haken = wird geschickt)", visible.toTypedArray(), checked) {
                 val keep = visible.filterIndexed { i, _ -> checked[i] }.toSet()
                 done(names.filter { it !in keep }.toSet())
             }
         }
         AlertDialog.Builder(this)
-            .setTitle("$title – was soll $code sehen? (${names.size} Gruppen)")
+            .setTitle("$title – was soll das andere Gerät sehen? (${names.size} Gruppen)")
             .setItems(arrayOf(
                 "Wie bei mir (${names.size - mine.count { it in names }} sichtbar)",
                 "Nach Ländern auswählen …",
@@ -278,11 +281,11 @@ class PlaylistActivity : Activity() {
 
     private fun pickFavs(code: String, pick: Pick) {
         val fl = store.favLists().filter { it.keys.isNotEmpty() }
-        if (fl.isEmpty()) { send(code, pick); return }
+        if (fl.isEmpty()) { askCodeThen(pick); return }
         val checked = BooleanArray(fl.size) { true }
         Dialogs.multiChoice(this, "Welche Favoritenlisten?", fl.map { "★ ${it.name}  (${it.keys.size} Sender)" }.toTypedArray(), checked) {
             pick.favLists = fl.filterIndexed { i, _ -> checked[i] }.map { it.name }.toSet()
-            send(code, pick)
+            askCodeThen(pick)
         }
     }
 
