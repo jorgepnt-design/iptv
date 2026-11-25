@@ -466,9 +466,17 @@ class PlayerActivity : Activity() {
     private fun channelOptions(c: Channel) {
         armOverlayTimer()
         val fav = store.isFavorite(c)
+        // ganz oben: Favorit direkt entfernen
+        val inFavGroup = viewingGroup in favGroups.keys
+        val removeLabel = when {
+            inFavGroup -> "✕ Aus „${favGroups[viewingGroup]}“ entfernen"
+            fav -> "✕ Aus allen Favoriten entfernen"
+            else -> null
+        }
         AlertDialog.Builder(this)
             .setTitle("${c.number}  ${c.name}")
             .setItems(arrayOf(
+                *(if (removeLabel != null) arrayOf(removeLabel) else emptyArray()),
                 if (fav) "★ Favoritenlisten bearbeiten …" else "★ Zu Favoriten hinzufügen …",
                 "In Multi-View öffnen",
                 "Abspielen",
@@ -478,7 +486,9 @@ class PlayerActivity : Activity() {
                 *(if (viewingGroup == G_RECENT) arrayOf("✕ Aus Verlauf entfernen", "🗑 Ganzen Verlauf löschen")
                   else if (viewingGroup in favGroups.keys) arrayOf("⇅ Verschieben (Reihenfolge ändern)")
                   else emptyArray())
-            )) { _, w ->
+            )) { _, w0 ->
+                if (removeLabel != null && w0 == 0) { removeFavorite(c, if (inFavGroup) favGroups[viewingGroup] else null); return@setItems }
+                val w = if (removeLabel != null) w0 - 1 else w0
                 when (w) {
                     5 -> changeNumber(c)
                     6 -> if (viewingGroup in favGroups.keys) startMove(c) else { playlist?.id?.let { store.removeRecent(it, c.url) }; channelAdapter.items = channelsOf(G_RECENT); refreshGroupCounts(); toast("${c.name} aus Verlauf entfernt"); focusChannel(0) }
@@ -1001,6 +1011,22 @@ class PlayerActivity : Activity() {
                         }
                     }.show()
             }.show()
+    }
+
+    /** Sender aus einer Liste (oder aus allen) entfernen; Markierung bleibt an derselben Stelle */
+    private fun removeFavorite(c: Channel, listName: String?) {
+        val k = favKey(c)
+        val all = store.favLists()
+        all.forEach { if (listName == null || it.name == listName) it.keys.remove(k) }
+        store.saveFavLists(all)
+        channelAdapter.favorites = store.favorites()
+        if (viewingGroup in favGroups.keys) {
+            val pos = channelAdapter.indexOf(c.url).coerceAtLeast(0)
+            channelAdapter.items = channelsOf(viewingGroup)
+            refreshGroupCounts()
+            if (channelAdapter.items.isEmpty()) focusGroup() else focusAt(channelList, pos.coerceAtMost(channelAdapter.items.size - 1))
+        } else afterFavChange(c)
+        toast("${c.name} entfernt")
     }
 
     // ---------- Favoriten ordnen ----------

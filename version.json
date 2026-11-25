@@ -1,6 +1,6 @@
 {
-  "versionCode": 50,
-  "versionName": "2.38",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=50",
-  "notes": "• Multi-View: Sendername wird nur noch kurz eingeblendet (3 s) und verschwindet dann – das Bild ist frei\n• Beim Wechsel des Fensters erscheint der Name kurz wieder"
+  "versionCode": 51,
+  "versionName": "2.39",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=51",
+  "notes": "• OK lang auf einen Favoriten: ganz oben „✕ Entfernen“ – direkt abwählen ohne Umweg"
 }
