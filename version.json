@@ -1,6 +1,6 @@
 {
-  "versionCode": 63,
-  "versionName": "2.51",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=63",
-  "notes": "• Länder werden besser erkannt: auch Gruppen wie „DE VIP SPORT“ oder „PT SPORT“ und Flaggen 🇩🇪🇵🇹\n• Gilt für Gruppen/Länder, Filme/Serien und das Senden an andere Geräte"
+  "versionCode": 64,
+  "versionName": "2.52",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=64",
+  "notes": "• Neues PintoTV-Symbol oben im Menü (ohne Versionsnummer)"
 }

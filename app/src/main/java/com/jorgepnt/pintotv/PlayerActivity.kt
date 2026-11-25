@@ -105,7 +105,9 @@ class PlayerActivity : Activity() {
         initLists()
         initTouch()
         val v = appVersion(this)
-        findViewById<TextView>(R.id.menuTitle).text = "PintoTV $v"
+        findViewById<TextView>(R.id.menuTitle).text = android.text.SpannableString("PintoTV").apply {
+            setSpan(android.text.style.ForegroundColorSpan(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, R.color.accent)), 5, 7, 0)
+        }
         findViewById<TextView>(R.id.overlayVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.loadVersion).text = "PintoTV $v"
         findViewById<TextView>(R.id.versionTag).text = "PintoTV $v"

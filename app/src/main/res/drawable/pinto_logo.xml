@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PintoTV-Symbol: abgerundetes blaues Feld mit Play-Dreieck -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp" android:height="36dp"
+    android:viewportWidth="36" android:viewportHeight="36">
+    <path android:fillColor="#2F6FED"
+        android:pathData="M9,0 H27 A9,9 0 0 1 36,9 V27 A9,9 0 0 1 27,36 H9 A9,9 0 0 1 0,27 V9 A9,9 0 0 1 9,0 Z" />
+    <path android:fillColor="#4C8DFF"
+        android:pathData="M9,0 H27 A9,9 0 0 1 36,9 V14 C24,16 12,10 0,14 V9 A9,9 0 0 1 9,0 Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M14,10.5 L26.5,18 L14,25.5 Z" />
+</vector>
