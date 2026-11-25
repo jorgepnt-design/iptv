@@ -92,6 +92,22 @@ class MultiViewActivity : Activity() {
         var errors = 0
         var src: Repo.Loaded? = null
         private val isOther get() = src != null && src?.playlist?.id != Repo.playlistId
+        private val hideLabel = Runnable { label.visibility = View.GONE }
+
+        /** Sendername kurz einblenden, dann verschwindet er, damit das Bild frei ist */
+        fun flashLabel() {
+            if (channel == null) return
+            label.removeCallbacks(hideLabel)
+            label.visibility = View.VISIBLE
+            label.postDelayed(hideLabel, 3000)
+        }
+
+        /** Fehlertext bleibt stehen */
+        fun showLabel(t: String) {
+            label.removeCallbacks(hideLabel)
+            label.text = t
+            label.visibility = View.VISIBLE
+        }
 
         init {
             frame.setBackgroundColor(Color.BLACK)
@@ -125,21 +141,26 @@ class MultiViewActivity : Activity() {
             errors = 0
             val (cur, _) = Repo.nowNext(c)
             label.text = (if (isOther) "[${src?.playlist?.name}]  " else "") + "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
-            label.visibility = View.VISIBLE
+            flashLabel()
             val p = player ?: Players.create(this@MultiViewActivity) { src?.ua ?: Http.UA }.also { np ->
                 player = np
                 view.player = np
                 np.addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_READY) errors = 0 }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) {
+                            if (errors > 0) { channel?.let { ch -> label.text = "${ch.number}  ${ch.name}" }; flashLabel() }
+                            errors = 0
+                        }
+                    }
 
                     override fun onPlayerError(error: PlaybackException) {
                         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                             np.seekToDefaultPosition(); np.prepare()
                         } else if (++errors <= 2) {
-                            label.text = "${channel?.name ?: ""}  ·  neuer Versuch …"
+                            showLabel("${channel?.name ?: ""}  ·  neuer Versuch …")
                             view.postDelayed({ if (player === np && channel != null) { np.prepare(); np.play() } }, 3000)
                         } else {
-                            label.text = "${channel?.name ?: ""}  ·  kein Bild"
+                            showLabel("${channel?.name ?: ""}  ·  kein Bild")
                             val m = src?.maxConnections ?: Xtream.maxConnections
                             hint.text = "Sender lädt nicht.\nOft erlaubt der Anbieter nur ${if (m > 0) "$m Verbindung(en)" else "wenige Verbindungen"} gleichzeitig.\nTipp: Sender aus einer anderen Playlist wählen.\nOK: anderen Sender wählen"
                             hint.visibility = View.VISIBLE
@@ -231,6 +252,7 @@ class MultiViewActivity : Activity() {
 
     private fun highlight() {
         list.forEachIndexed { i, t -> t.frame.foreground = getDrawable(if (i == sel) R.drawable.tile_selected else R.drawable.tile_normal) }
+        list.getOrNull(sel)?.flashLabel() // beim Wechsel kurz zeigen, welcher Sender das ist
         applyAudio()
     }
 

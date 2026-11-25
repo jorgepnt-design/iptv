@@ -1,6 +1,6 @@
 {
-  "versionCode": 49,
-  "versionName": "2.37",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=49",
-  "notes": "• Favoriten selbst ordnen: OK lang auf einen Sender in der Favoritenliste → ⇅ Verschieben, mit ▲▼ bewegen, OK = fertig\n• Menü → Favoritenlisten → Liste → ⇅ Sender ordnen / ↺ Reihenfolge zurücksetzen"
+  "versionCode": 50,
+  "versionName": "2.38",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=50",
+  "notes": "• Multi-View: Sendername wird nur noch kurz eingeblendet (3 s) und verschwindet dann – das Bild ist frei\n• Beim Wechsel des Fensters erscheint der Name kurz wieder"
 }
