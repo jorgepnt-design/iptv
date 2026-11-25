@@ -1,6 +1,6 @@
 {
-  "versionCode": 54,
-  "versionName": "2.42",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=54",
-  "notes": "• Kanalliste: nach dem letzten Sender geht es wieder oben weiter (▲ am Anfang springt ans Ende)\n• Gilt auch für Gruppen, Menü und Filme/Serien\n• Beim Gedrückthalten bleibt die Liste am Ende stehen – einmal neu drücken springt nach oben"
+  "versionCode": 55,
+  "versionName": "2.43",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=55",
+  "notes": "• Fern-Einrichtung: Jedes Gerät hat einen Gerätecode (Playlists-Bildschirm oben)\n• Auf pintotv-setup.vercel.app eine Playlist für einen Gerätecode eintragen – das Gerät holt sie automatisch\n• Playlists → ⇄ Übertragen → „Meine Einrichtung an Gerätecode senden“\n• Listen springen am Ende wieder an den Anfang"
 }

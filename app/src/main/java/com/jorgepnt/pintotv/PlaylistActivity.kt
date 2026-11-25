@@ -37,7 +37,7 @@ class PlaylistActivity : Activity() {
         setContentView(R.layout.activity_playlist)
         store = Store(this)
         list = findViewById(R.id.plList)
-        findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}"
+        findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}   ·   Gerätecode: ${Remote.deviceCode(this)}"
         adapter = TextAdapter(
             onFocus = { pos -> if (pos >= 0) marked = pos },
             onClick = { pos -> store.playlists().getOrNull(pos)?.let { select(it) } },
@@ -84,6 +84,99 @@ class PlaylistActivity : Activity() {
         return Bitmap.createBitmap(px, size, size, Bitmap.Config.RGB_565)
     }
 
+    // ---------- Fern-Einrichtung ----------
+
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+    private var remoteBusy = false
+    private val remotePoll = object : Runnable {
+        override fun run() { checkRemote(quiet = true); ui.postDelayed(this, 15000) }
+    }
+
+    override fun onResume() { super.onResume(); ui.postDelayed(remotePoll, 1500) }
+    override fun onPause() { super.onPause(); ui.removeCallbacks(remotePoll) }
+
+    private fun checkRemote(quiet: Boolean) {
+        if (remoteBusy) return
+        remoteBusy = true
+        scope.launch {
+            val items = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Remote.fetch(this@PlaylistActivity).also { l -> l.lastOrNull()?.let { Remote.clear(this@PlaylistActivity, it.id) } }
+                }
+            } catch (e: Exception) {
+                if (!quiet) Toast.makeText(this@PlaylistActivity, "Abruf fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+                null
+            }
+            remoteBusy = false
+            if (items == null) return@launch
+            if (items.isEmpty()) { if (!quiet) Toast.makeText(this@PlaylistActivity, "Für ${Remote.deviceCode(this@PlaylistActivity)} liegt nichts bereit", Toast.LENGTH_LONG).show(); return@launch }
+            Remote.offer(this@PlaylistActivity, items,
+                onPlaylists = { pls ->
+                    store.savePlaylists(store.playlists() + pls)
+                    store.activeId = pls.last().id
+                    Toast.makeText(this@PlaylistActivity, "Playlist hinzugefügt – wird geladen", Toast.LENGTH_LONG).show()
+                    setResult(RESULT_OK); finish()
+                },
+                onBackup = { json -> applyBackup(json) })
+        }
+    }
+
+    private fun showDeviceCode() {
+        val code = Remote.deviceCode(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(40, 20, 40, 10)
+            addView(TextView(this@PlaylistActivity).apply {
+                text = code; textSize = 34f; setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = android.view.Gravity.CENTER
+            })
+            addView(ImageView(this@PlaylistActivity).apply { setImageBitmap(qr(Remote.setupUrl(this@PlaylistActivity), 360)) },
+                LinearLayout.LayoutParams(360, 360).apply { topMargin = 16 })
+            addView(TextView(this@PlaylistActivity).apply {
+                text = "Diesen Code an den schicken, der dein Gerät einrichtet.\n" +
+                    "Er gibt ihn auf ${Remote.BASE.removePrefix("https://")} ein (oder scannt den QR-Code) " +
+                    "oder schickt aus seiner PintoTV-App: Playlists → ⇄ Übertragen → „Meine Einrichtung an Gerätecode senden“.\n\n" +
+                    "Solange dieser Bildschirm offen ist, kommt die Einrichtung automatisch an."
+                textSize = 15f; setTextColor(Color.parseColor("#B8C0CE"))
+                setPadding(0, 18, 0, 0)
+            })
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🌐 Fern-Einrichtung")
+            .setView(box)
+            .setPositiveButton("Jetzt abrufen") { _, _ -> checkRemote(quiet = false) }
+            .setNegativeButton("Schließen", null)
+            .show()
+    }
+
+    private fun sendToCode() {
+        val input = EditText(this).apply {
+            hint = "PT-XXXX-XXXX"; isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Meine Einrichtung an Gerätecode senden")
+            .setMessage("Alle Playlists, Favoriten und Einstellungen dieses Fernsehers werden an das andere Gerät geschickt und ersetzen dort die Einrichtung.\n\nGerätecode des anderen Geräts:")
+            .setView(input)
+            .setPositiveButton("Senden") { _, _ ->
+                val code = Remote.normalize(input.text.toString())
+                if (code == null) { Toast.makeText(this, "Ungültiger Gerätecode", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                if (code == Remote.deviceCode(this)) { Toast.makeText(this, "Das ist der Code dieses Geräts", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                val json = store.exportJson()
+                scope.launch {
+                    val err = try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Remote.sendBackup(code, json) }; null } catch (e: Exception) { e.message ?: "Fehler" }
+                    if (err == null) AlertDialog.Builder(this@PlaylistActivity).setTitle("✓ Gesendet an $code")
+                        .setMessage("Sobald auf dem anderen Gerät PintoTV geöffnet wird, erscheint dort die Frage, ob die Einrichtung übernommen werden soll.")
+                        .setPositiveButton("OK", null).show()
+                    else Toast.makeText(this@PlaylistActivity, "Senden fehlgeschlagen: $err", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
@@ -125,9 +218,13 @@ class PlaylistActivity : Activity() {
                 "📺 An anderen Fernseher senden",
                 "📥 Von anderem Fernseher empfangen",
                 "📱 Mit dem Handy sichern / laden",
-                "🗂 Automatische Sicherungen (wöchentlich)"
+                "🗂 Automatische Sicherungen (wöchentlich)",
+                "🌐 Fern-Einrichtung: Gerätecode anzeigen",
+                "📤 Meine Einrichtung an Gerätecode senden"
             )) { _, w ->
                 when (w) {
+                    4 -> showDeviceCode()
+                    5 -> sendToCode()
                     3 -> showAutoBackups()
                     0 -> scanAndSend()
                     1 -> AlertDialog.Builder(this).setTitle("Empfangen")
@@ -236,20 +333,22 @@ class PlaylistActivity : Activity() {
             .setTitle("Sicherung empfangen")
             .setMessage("${if (from.startsWith("Sicherung")) from else "Von " + (if (from.isNotBlank()) from else "einem Gerät")}:\n${store.describe(json)}\n\n" +
                 "Übernehmen? Die Einstellungen auf diesem Fernseher werden dabei ersetzt.")
-            .setPositiveButton("Übernehmen") { _, _ ->
-                try {
-                    store.importJson(json)
-                    filesDir.listFiles()?.filter { it.name.startsWith("ch_") || it.name.startsWith("epg_") }?.forEach { it.delete() }
-                    Vod.clearCache()
-                    Toast.makeText(this, "Übernommen – Playlist wird geladen", Toast.LENGTH_LONG).show()
-                    deletedActive = true
-                    finish()
-                } catch (e: Exception) {
-                    Toast.makeText(this, "Sicherung fehlerhaft: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
+            .setPositiveButton("Übernehmen") { _, _ -> applyBackup(json) }
             .setNegativeButton("Abbrechen", null)
             .show()
+    }
+
+    private fun applyBackup(json: String) {
+        try {
+            store.importJson(json)
+            filesDir.listFiles()?.filter { it.name.startsWith("ch_") || it.name.startsWith("epg_") }?.forEach { it.delete() }
+            Vod.clearCache()
+            Toast.makeText(this, "Übernommen – Playlist wird geladen", Toast.LENGTH_LONG).show()
+            deletedActive = true
+            finish()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Sicherung fehlerhaft: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun confirmDelete(p: Playlist) {

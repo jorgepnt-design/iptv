@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PintoTV · Fern-Einrichtung</title>
+<style>
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0E1014;color:#fff}
+.wrap{max-width:480px;margin:0 auto;padding:24px 18px 48px}
+h1{font-size:28px;margin:4px 0 4px}h1 span{color:#4C8DFF}
+.sub{color:#9aa3b5;margin:0 0 22px;line-height:1.45}
+h2{font-size:17px;margin:26px 0 10px;color:#cfd6e4}
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tabs button{flex:1;margin:0;padding:12px;border-radius:10px;background:#222630;font-size:15px;font-weight:600}
+.tabs button.on{background:#4C8DFF}
+.f{margin-bottom:14px}.f label{display:block;font-size:14px;color:#9aa3b5;margin-bottom:6px}
+.f input{width:100%;box-sizing:border-box;padding:14px;border-radius:10px;border:1px solid #2A3550;background:#181B22;color:#fff;font-size:17px}
+#code{font-size:24px;letter-spacing:2px;text-transform:uppercase;text-align:center;font-weight:700}
+.pane{display:none}.pane.on{display:block}
+button{display:block;width:100%;box-sizing:border-box;text-align:center;padding:16px;border:0;border-radius:12px;background:#4C8DFF;color:#fff;font-size:18px;font-weight:700;margin-top:10px;cursor:pointer}
+button:disabled{opacity:.5}
+#st{margin-top:16px;font-weight:700;line-height:1.4}.ok{color:#5BE08A}.err{color:#FF6B6B}
+.hint{color:#6f788a;font-size:13px;margin-top:22px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pinto<span>TV</span></h1>
+  <p class="sub">Einen Fernseher aus der Ferne einrichten. Den Gerätecode zeigt PintoTV auf dem Fernseher an (Playlists-Bildschirm, oben).</p>
+
+  <div class="f"><label>Gerätecode des Fernsehers *</label>
+    <input id="code" placeholder="PT-XXXX-XXXX" autocapitalize="characters" autocorrect="off" autocomplete="off" maxlength="14"></div>
+
+  <h2>Was soll geschickt werden?</h2>
+  <div class="tabs">
+    <button type="button" data-t="x" class="on">Xtream</button>
+    <button type="button" data-t="m">M3U</button>
+    <button type="button" data-t="b">Sicherung</button>
+  </div>
+
+  <div class="pane on" id="p-x">
+    <div class="f"><label>Name (frei wählbar)</label><input id="xname" placeholder="z. B. Mein Anbieter"></div>
+    <div class="f"><label>Server-Adresse *</label><input id="server" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://server.de:8080"></div>
+    <div class="f"><label>Benutzername *</label><input id="user" autocapitalize="off" autocorrect="off"></div>
+    <div class="f"><label>Passwort *</label><input id="pass" autocapitalize="off" autocorrect="off"></div>
+    <div class="f"><label>EPG-Adresse (optional)</label><input id="xepg" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="bei Xtream automatisch"></div>
+  </div>
+  <div class="pane" id="p-m">
+    <div class="f"><label>Name (frei wählbar)</label><input id="mname" placeholder="z. B. Mein Anbieter"></div>
+    <div class="f"><label>Playlist-Adresse (M3U) *</label><input id="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://…/playlist.m3u"></div>
+    <div class="f"><label>EPG-Adresse (optional)</label><input id="mepg" inputmode="url" autocapitalize="off" autocorrect="off"></div>
+  </div>
+  <div class="pane" id="p-b">
+    <p class="sub">Eine PintoTV-Sicherung (.json) mit allen Playlists, Favoriten und Einstellungen. Sie ersetzt die Einrichtung auf dem Fernseher.</p>
+    <div class="f"><label>Sicherungsdatei</label><input type="file" id="file" accept=".json,application/json"></div>
+  </div>
+
+  <button id="send" type="button">An den Fernseher senden</button>
+  <div id="st"></div>
+
+  <p class="hint">Der Fernseher holt sich die Einrichtung beim nächsten Start von PintoTV oder sofort, wenn der Playlists-Bildschirm offen ist. Gespeicherte Daten werden nach dem Abruf gelöscht.</p>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let tab = 'x';
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+  tab = b.dataset.t;
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'p-' + tab));
+});
+function norm(v) {
+  let s = (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (s.startsWith('PT') && s.length === 10) s = s.slice(2);
+  return s.length === 8 ? 'PT-' + s.slice(0, 4) + '-' + s.slice(4) : null;
+}
+const q = new URLSearchParams(location.search).get('code');
+if (q) $('code').value = norm(q) || q;
+function status(t, ok) { $('st').textContent = t; $('st').className = ok ? 'ok' : 'err'; }
+$('send').onclick = async () => {
+  const code = norm($('code').value);
+  if (!code) return status('Bitte den Gerätecode vom Fernseher eingeben (PT-XXXX-XXXX).', false);
+  let kind = 'playlist', payload;
+  if (tab === 'x') {
+    payload = { type: 'xtream', name: $('xname').value.trim() || 'Xtream', server: $('server').value.trim(), user: $('user').value.trim(), pass: $('pass').value.trim(), epg: $('xepg').value.trim() };
+    if (!payload.server || !payload.user) return status('Bitte Server und Benutzername ausfüllen.', false);
+  } else if (tab === 'm') {
+    payload = { type: 'm3u', name: $('mname').value.trim() || 'M3U', url: $('url').value.trim(), epg: $('mepg').value.trim() };
+    if (!payload.url) return status('Bitte die Playlist-Adresse ausfüllen.', false);
+  } else {
+    const f = $('file').files[0];
+    if (!f) return status('Bitte eine Sicherungsdatei auswählen.', false);
+    try { payload = JSON.parse(await f.text()); } catch (e) { return status('Die Datei ist keine gültige Sicherung.', false); }
+    if (!payload.prefs) return status('Das ist keine PintoTV-Sicherung.', false);
+    kind = 'backup';
+  }
+  $('send').disabled = true; status('Wird gesendet …', true);
+  try {
+    const r = await fetch('/api/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, kind, payload }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) status('✓ Gesendet an ' + code + '. Jetzt PintoTV auf dem Fernseher öffnen.', true);
+    else status(d.error || ('Fehler ' + r.status), false);
+  } catch (e) { status('Keine Verbindung – bitte nochmal versuchen.', false); }
+  $('send').disabled = false;
+};
+</script>
+</body>
+</html>

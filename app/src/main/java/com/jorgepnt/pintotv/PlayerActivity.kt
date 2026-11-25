@@ -130,6 +130,34 @@ class PlayerActivity : Activity() {
             startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST)
         } else {
             load(false)
+            // Fern-Einrichtung: liegt für dieses Gerät etwas bereit?
+            ui.postDelayed({ checkRemote() }, 6000)
+        }
+    }
+
+    private fun checkRemote() {
+        scope.launch {
+            val items = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Remote.fetch(this@PlayerActivity).also { l -> l.lastOrNull()?.let { Remote.clear(this@PlayerActivity, it.id) } }
+                }
+            } catch (e: Exception) { return@launch }
+            if (isFinishing) return@launch
+            Remote.offer(this@PlayerActivity, items,
+                onPlaylists = { pls ->
+                    store.savePlaylists(store.playlists() + pls)
+                    store.activeId = pls.last().id
+                    load(false)
+                },
+                onBackup = { json ->
+                    try {
+                        store.importJson(json)
+                        filesDir.listFiles()?.filter { it.name.startsWith("ch_") || it.name.startsWith("epg_") }?.forEach { it.delete() }
+                        Vod.clearCache()
+                        toast("Fern-Einrichtung übernommen – wird geladen")
+                        load(false)
+                    } catch (e: Exception) { toast("Einrichtung fehlerhaft: ${e.message}") }
+                })
         }
     }
 
