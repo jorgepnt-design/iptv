@@ -86,6 +86,34 @@ object Countries {
         return norm("" + ('A' + (a - 0x1F1E6)) + ('A' + (b - 0x1F1E6)))
     }
 
+    /** Flaggen-Emoji für einen Ländercode (leer, wenn es keine Flagge gibt) */
+    fun flagEmoji(code: String): String {
+        if (code == "XXX") return "🔞"
+        val c = when (code) { "UK" -> "GB"; "EX", "AR", "LAT", "KU", "AF", "?" -> return ""; else -> code }
+        if (c.length != 2 || !c.all { it in 'A'..'Z' }) return ""
+        return String(Character.toChars(0x1F1E6 + (c[0] - 'A'))) + String(Character.toChars(0x1F1E6 + (c[1] - 'A')))
+    }
+
+    private val strip = Regex("^[\\s|\\[(★✪•]*[A-Za-z]{2,3}(\\s*[^\\p{L}\\p{N}\\s]+\\s*|\\s+)")
+
+    /** Gruppenname ohne Länderkürzel vorne: „DE ✪ SKY SPORT“ → „SKY SPORT“ */
+    fun bare(group: String): String {
+        val c = code(group)
+        if (c == "?" || c == "XXX") return group.trim()
+        val m = strip.find(group) ?: return group.trim()
+        if (norm(m.value.trim().takeWhile { it.isLetter() }.uppercase()) != c) return group.trim()
+        return group.substring(m.range.last + 1).trim().ifEmpty { group.trim() }
+    }
+
+    /** Anzeige mit Flagge: „🇩🇪 SKY SPORT“ */
+    fun pretty(group: String): String {
+        val c = code(group)
+        val f = flagEmoji(c)
+        if (c == "XXX") return "🔞 " + group.trim()
+        if (f.isEmpty()) return group.trim()
+        return "$f ${bare(group)}"
+    }
+
     fun code(group: String): String {
         if (adult.containsMatchIn(group)) return "XXX"
         flag(group)?.let { return it }

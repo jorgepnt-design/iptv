@@ -955,12 +955,7 @@ class PlayerActivity : Activity() {
         if (viewingGroup !in favGroups.keys && store.favLists().all { "★ ${it.name}" in favGroups.keys } && favGroups.size == store.favLists().size) {
             channelList.post {
                 try { channelAdapter.notifyItemRangeChanged(0, channelAdapter.itemCount) } catch (e: Exception) { }
-                groupAdapter.items = groupKeys.map { g ->
-                    if (g == G_MENU) TextItem(G_MENU, "›")
-                    else if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
-                    else if (g == G_MOVIES || g == G_SERIES) TextItem(g, "›")
-                    else TextItem(g, channelsOf(g).size.toString())
-                }
+                groupAdapter.items = groupItems()
                 if (c != null && overlay.visibility == View.VISIBLE) {
                     val i = channelAdapter.indexOf(c.url)
                     channelList.findViewHolderForAdapterPosition(i)?.itemView?.requestFocus()
@@ -1270,13 +1265,31 @@ class PlayerActivity : Activity() {
         channelList.scrollToPosition(0)
     }
 
-    private fun refreshGroupCounts() {
-        groupAdapter.items = groupKeys.map { g ->
-            if (g == G_MENU) TextItem(G_MENU, "›")
-            else if (g == G_SWITCH) TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "")
-            else if (g == G_MOVIES || g == G_SERIES) TextItem(g, "›")
-            else TextItem(g, channelsOf(g).size.toString())
+    /** Gruppenliste: Flagge + Name ohne Kürzel, Länder-Überschrift bei jedem Länderwechsel */
+    private fun groupItems(): List<TextItem> {
+        var prev: String? = null
+        return groupKeys.map { g ->
+            when {
+                g == G_MENU -> { prev = null; TextItem(G_MENU, "›") }
+                g == G_SWITCH -> { prev = null; TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "") }
+                g == G_MOVIES || g == G_SERIES -> { prev = null; TextItem(g, "›") }
+                g in favGroups.keys || g == G_RECENT || g == G_ALL -> { prev = null; TextItem(g, channelsOf(g).size.toString()) }
+                else -> {
+                    val c = Countries.code(g)
+                    val header = if (c != prev) {
+                        val f = Countries.flagEmoji(c)
+                        val n = if (c == "?") "WEITERE" else if (c == "XXX") "ERWACHSENE" else Countries.label(c).substringBefore(" (").uppercase()
+                        if (f.isEmpty()) n else "$f  $n"
+                    } else null
+                    prev = c
+                    TextItem(if (c == "?" || c == "XXX") g.trim() else Countries.bare(g), channelsOf(g).size.toString(), header)
+                }
+            }
         }
+    }
+
+    private fun refreshGroupCounts() {
+        groupAdapter.items = groupItems()
         groupAdapter.activePos = groupKeys.indexOf(viewingGroup)
     }
 
@@ -1416,8 +1429,17 @@ class PlayerActivity : Activity() {
     private fun showDetails(c: Channel) {
         val (cur, next) = Repo.nowNext(c)
         findViewById<TextView>(R.id.detailChannel).text = "${c.number}  ${c.name}"
-        findViewById<TextView>(R.id.detailTitle).text = cur?.title ?: "Keine Programminformationen"
-        findViewById<TextView>(R.id.detailTime).text = cur?.let { Fmt.range(it) } ?: c.group
+        findViewById<ImageView>(R.id.detailLogo).let { iv ->
+            if (c.logo.isNullOrBlank()) { iv.visibility = View.GONE } else { iv.visibility = View.VISIBLE; iv.load(c.logo) { crossfade(false) } }
+        }
+        findViewById<TextView>(R.id.detailTitle).apply {
+            // ohne Programm: klein und grau statt groß
+            text = cur?.title ?: "Keine Programminformationen"
+            textSize = if (cur != null) 22f else 15f
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, if (cur != null) R.color.text else R.color.text3))
+            setTypeface(null, if (cur != null) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        }
+        findViewById<TextView>(R.id.detailTime).text = cur?.let { Fmt.range(it) } ?: Countries.pretty(c.group)
         findViewById<TextView>(R.id.detailDesc).text = cur?.desc ?: ""
         findViewById<TextView>(R.id.detailNext).text = next?.let { "Danach: ${Fmt.time(it.start)}  ${it.title}" } ?: ""
     }
@@ -1548,7 +1570,7 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.bannerNumber).text = c.number.toString()
         findViewById<ImageView>(R.id.bannerLogo).load(c.logo)
         findViewById<TextView>(R.id.bannerName).text = c.name
-        findViewById<TextView>(R.id.bannerGroup).text = c.group
+        findViewById<TextView>(R.id.bannerGroup).text = Countries.pretty(c.group)
         // kleine Hinweise: Qualität, Favorit, Aufnahme
         val n = c.name.lowercase()
         val badges = listOfNotNull(

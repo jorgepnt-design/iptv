@@ -114,6 +114,15 @@ class VodTest {
         org.junit.Assert.assertFalse(Vod.isVodUrl("http://s/hls/stream.m3u8"))
     }
 
+    @org.junit.Test fun prettyNames() {
+        org.junit.Assert.assertEquals("SKY SPORT", Countries.bare("DE ✪ SKY SPORT"))
+        org.junit.Assert.assertEquals("VIP SPORT", Countries.bare("DE VIP SPORT"))
+        org.junit.Assert.assertEquals("Sport", Countries.bare("DE | Sport"))
+        org.junit.Assert.assertEquals("Sport Mix", Countries.bare("Sport Mix"))
+        org.junit.Assert.assertEquals("\uD83C\uDDE9\uD83C\uDDEA SKY SPORT", Countries.pretty("DE ✪ SKY SPORT"))
+        org.junit.Assert.assertEquals("\uD83C\uDDE6\uD83C\uDDF9 AUSTRIA SPORT", Countries.pretty("AT ✪ AUSTRIA SPORT"))
+    }
+
     @org.junit.Test fun adultGroups() {
         org.junit.Assert.assertEquals("XXX", Countries.code("XXX ✪ FOR ADULTS (18+)"))
         org.junit.Assert.assertEquals("XXX", Countries.code("FOR ADULTS (18+)"))

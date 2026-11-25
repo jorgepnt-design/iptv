@@ -194,7 +194,10 @@ class VodActivity : Activity() {
         keys.add(""); labels.add("Alle")
         catalog.categories.filter { it.name !in hidden }.forEach { keys.add(it.id); labels.add(it.name) }
         catKeys = keys; catLabels = labels
-        catAdapter.items = keys.indices.map { i -> TextItem(labels[i], itemsOf(keys[i]).size.toString()) }
+        catAdapter.items = keys.indices.map { i ->
+            val k = keys[i]
+            TextItem(if (k.isEmpty() || k.startsWith("#")) labels[i] else Countries.pretty(labels[i]), itemsOf(k).size.toString())
+        }
     }
 
     private fun resumeItems(): List<VodItem> =

@@ -1,6 +1,6 @@
 {
-  "versionCode": 64,
-  "versionName": "2.52",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=64",
-  "notes": "• Neues PintoTV-Symbol oben im Menü (ohne Versionsnummer)"
+  "versionCode": 65,
+  "versionName": "2.53",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=65",
+  "notes": "• Gruppen mit Flaggen und Länder-Überschriften (🇩🇪 DEUTSCHLAND …), Anzahl als kleines Kästchen\n• Senderlogos in einheitlichen Kästchen, ohne Logo die Anfangsbuchstaben\n• „Keine Informationen“ entfällt – Liste ruhiger\n• Vorschau rechts mit Logo, „Keine Programminformationen“ klein\n• Markierte Zeile mit hellem Rahmen und leicht vergrößert"
 }
