@@ -87,7 +87,7 @@ class VodActivity : Activity() {
                 // oberste Kategorie + hoch → zu „Suchen“ / „Kategorien“
                 if (rv == cats && up && cats.getChildAdapterPosition(cats.findContainingItemView(f!!)!!) == 0)
                     return super.dispatchKeyEvent(e)
-                return ListNav.move(rv, f, if (up) -1 else 1)
+                return ListNav.move(rv, f, if (up) -1 else 1, wrap = e.repeatCount == 0)
             }
         }
         return super.dispatchKeyEvent(e)

@@ -6,15 +6,21 @@ import androidx.recyclerview.widget.RecyclerView
 
 /** Hoch/Runter in Listen selbst steuern, damit der Fokus nie in eine andere Spalte springt */
 object ListNav {
-    /** delta in Zeilen (-1 / +1); bei Rastern wird eine ganze Zeile gesprungen */
-    fun move(rv: RecyclerView, focused: View?, delta: Int): Boolean {
+    /** delta in Zeilen (-1 / +1); bei Rastern wird eine ganze Zeile gesprungen.
+     *  wrap = am Ende wieder oben anfangen (und oben ▲ → ans Ende) */
+    fun move(rv: RecyclerView, focused: View?, delta: Int, wrap: Boolean = true): Boolean {
         val item = focused?.let { rv.findContainingItemView(it) } ?: return false
         val pos = rv.getChildAdapterPosition(item)
         if (pos == RecyclerView.NO_POSITION) return true
         val n = rv.adapter?.itemCount ?: 0
         val step = (rv.layoutManager as? GridLayoutManager)?.spanCount ?: 1
-        val target = pos + delta * step
-        if (target < 0 || target >= n) return true // Rand: stehen bleiben
+        var target = pos + delta * step
+        if (target < 0 || target >= n) {
+            if (!wrap || n <= step) return true // Rand: stehen bleiben
+            val col = pos % step
+            target = if (target >= n) col // ganz nach oben, gleiche Spalte
+            else (((n - 1) / step) * step + col).coerceAtMost(n - 1) // ganz nach unten
+        }
         val vh = rv.findViewHolderForAdapterPosition(target)
         if (vh != null && vh.itemView.isShown) {
             vh.itemView.requestFocus()

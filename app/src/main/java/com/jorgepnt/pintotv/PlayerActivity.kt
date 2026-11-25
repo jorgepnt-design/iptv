@@ -1624,7 +1624,8 @@ class PlayerActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> if (rv != null) {
                     // selbst blättern: Markierung bleibt immer in der Spalte, auch bei schnellem Drücken
-                    ListNav.move(rv, currentFocus, if (code == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+                    // am Listenende wieder oben anfangen – nur bei neuem Druck, nicht beim Gedrückthalten
+                    ListNav.move(rv, currentFocus, if (code == KeyEvent.KEYCODE_DPAD_UP) -1 else 1, wrap = e.repeatCount == 0)
                     return true
                 }
                 KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> if (rv != null) { pageList(rv, -8); return true }
