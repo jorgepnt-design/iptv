@@ -430,7 +430,8 @@ class PlayerActivity : Activity() {
                 else if (g == G_MOVIES || g == G_SERIES) openVod(g == G_SERIES)
                 else { g?.let { showGroup(it) }; focusChannel(-1) }
             },
-            onLongClick = { pos -> if (groupKeys.getOrNull(pos) == G_RECENT) confirmClearRecents() }
+            onLongClick = { pos -> if (groupKeys.getOrNull(pos) == G_RECENT) confirmClearRecents() },
+            wrap = true
         )
         groupList.layoutManager = LinearLayoutManager(this)
         groupList.adapter = groupAdapter

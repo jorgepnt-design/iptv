@@ -1,6 +1,6 @@
 {
-  "versionCode": 52,
-  "versionName": "2.40",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=52",
-  "notes": "• Filme/Serien: Kategorienamen werden komplett angezeigt (mehrzeilig statt „…“)\n• Favoriten: OK lang → ganz oben „✕ Entfernen“"
+  "versionCode": 53,
+  "versionName": "2.41",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=53",
+  "notes": "• TV: Gruppennamen werden komplett angezeigt (mehrzeilig)\n• Lange Sendernamen zweizeilig\n• Filme/Serien: Kategorien vollständig"
 }
