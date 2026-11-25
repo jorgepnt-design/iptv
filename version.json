@@ -1,6 +1,6 @@
 {
-  "versionCode": 58,
-  "versionName": "2.46",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=58",
-  "notes": "• Fern-Einrichtung: genaue Gruppen-Auswahl von pintotv-setup.vercel.app wird übernommen (TV, Filme, Serien)\n• Erwachsenen-Gruppen (XXX/18+) bilden eine eigene Gruppe „🔞 Erwachsene“ in der Länderauswahl"
+  "versionCode": 59,
+  "versionName": "2.47",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=59",
+  "notes": "• Einrichtung an Gerätecode senden → „Genau auswählen“: für TV, Filme und Serien jeweils nach Ländern, einzelne Gruppen, alles oder alles außer 🔞 Erwachsene\n• Danach Favoritenlisten auswählen"
 }

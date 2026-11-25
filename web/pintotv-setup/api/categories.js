@@ -56,6 +56,9 @@ export default async function handler(req, res) {
     }
     res.status(400).json({ error: 'Unbekannte Art' });
   } catch (e) {
-    res.status(502).json({ error: e.name === 'AbortError' ? 'Der Anbieter antwortet nicht (Zeitüberschreitung)' : 'Gruppen konnten nicht geladen werden: ' + (e.message || e) });
+    const c = e.cause && (e.cause.code || '');
+    if (e.name === 'AbortError' || /TIMEOUT|ECONNREFUSED|ECONNRESET|EHOSTUNREACH/.test(c))
+      return res.status(502).json({ error: 'Dein Anbieter lässt Abfragen von Servern nicht zu – hier ist das Laden der Gruppen deshalb nicht möglich. Lösung: die genaue Auswahl aus der PintoTV-App senden (Playlists → ⇄ Übertragen → Meine Einrichtung an Gerätecode senden → Genau auswählen) oder unten nur die Länder antippen.' });
+    res.status(502).json({ error: e.name === 'AbortError' ? 'Der Anbieter antwortet nicht (Zeitüberschreitung)' : 'Gruppen konnten nicht geladen werden: ' + (e.message || e) + (e.cause ? ' (' + (e.cause.code || e.cause.message || e.cause) + ')' : '') });
   }
 }

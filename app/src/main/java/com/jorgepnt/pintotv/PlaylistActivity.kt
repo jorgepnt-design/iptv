@@ -174,14 +174,17 @@ class PlaylistActivity : Activity() {
 
     // ---------- Auswahl, was der andere bekommt ----------
 
-    private class Pick(var playlists: Set<String>, var countries: Set<String>?, var favLists: Set<String>)
+    private class Pick(var playlists: Set<String>, var countries: Set<String>?, var favLists: Set<String>) {
+        /** genau ausgeblendete Gruppen je Bereich (live / movies / series); fehlt = wie bei mir */
+        val hidden = HashMap<String, Set<String>>()
+    }
 
     private fun chooseScope(code: String) {
         AlertDialog.Builder(this)
             .setTitle("Was soll $code bekommen?")
             .setItems(arrayOf(
                 "Alles wie bei mir",
-                "Auswählen: Playlists, Länder und Favoritenlisten …"
+                "Genau auswählen: Playlists, Gruppen (TV, Filme, Serien), Favoriten …"
             )) { _, w ->
                 val all = Pick(store.playlists().map { it.id }.toSet(), null, store.favLists().map { it.name }.toSet())
                 if (w == 0) send(code, all) else pickPlaylists(code, all)
@@ -202,17 +205,75 @@ class PlaylistActivity : Activity() {
     private fun pickCountries(code: String, pick: Pick) {
         val pid = Repo.playlistId
         if (pid == null || pid !in pick.playlists || Repo.groups.isEmpty()) { pickFavs(code, pick); return }
-        val hidden = store.hiddenGroups(pid)
-        val byCountry = Repo.groups.groupBy { Countries.code(it) }
-        val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { -(byCountry[it]?.size ?: 0) }))
-        val labels = codes.map { c -> "${Countries.label(c)}  ·  ${byCountry[c]?.size} Gruppen" }.toTypedArray()
-        val checked = BooleanArray(codes.size) { i -> byCountry[codes[i]]!!.any { it !in hidden } }
-        val name = store.playlists().firstOrNull { it.id == pid }?.name ?: ""
-        Dialogs.multiChoice(this, "Welche Länder? („$name“ – TV, Filme und Serien)", labels, checked) {
-            pick.countries = codes.filterIndexed { i, _ -> checked[i] }.toSet()
-            if (pick.countries!!.isEmpty()) { Toast.makeText(this, "Mindestens ein Land wählen", Toast.LENGTH_LONG).show(); return@multiChoice }
-            pickFavs(code, pick)
+        pickSection(code, "📺 TV", Repo.groups, store.hiddenGroups(pid)) { h ->
+            h?.let { pick.hidden["live"] = it }
+            val p = store.playlists().first { it.id == pid }
+            loadVodNames(p, false) { movies ->
+                pickSection(code, "🎬 Filme", movies, store.hiddenGroups("$pid:movies")) { hm ->
+                    hm?.let { pick.hidden["movies"] = it }
+                    loadVodNames(p, true) { series ->
+                        pickSection(code, "📺 Serien", series, store.hiddenGroups("$pid:series")) { hs ->
+                            hs?.let { pick.hidden["series"] = it }
+                            pickFavs(code, pick)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private fun loadVodNames(p: Playlist, series: Boolean, then: (List<String>) -> Unit) {
+        val t = Toast.makeText(this, if (series) "Serien-Kategorien werden geladen …" else "Film-Kategorien werden geladen …", Toast.LENGTH_LONG).also { it.show() }
+        scope.launch {
+            val names = try { Vod.catalog(this@PlaylistActivity, p, series, null).categories.map { it.name } } catch (e: Exception) { emptyList() }
+            t.cancel()
+            then(names)
+        }
+    }
+
+    /** Ein Bereich (TV/Filme/Serien): wie bei mir, alles, nach Ländern (+ einzeln anpassen) oder komplett einzeln */
+    private fun pickSection(code: String, title: String, names: List<String>, mine: Set<String>, done: (Set<String>?) -> Unit) {
+        if (names.isEmpty()) { done(null); return }
+        val byCountry = LinkedHashMap<String, MutableList<String>>()
+        names.forEach { g -> byCountry.getOrPut(Countries.code(g)) { mutableListOf() }.add(g) }
+        val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { -(byCountry[it]?.size ?: 0) }))
+        fun fineTune(visible: List<String>) {
+            val checked = BooleanArray(visible.size) { true }
+            Dialogs.multiChoice(this, "$title – einzelne Gruppen (Haken = $code bekommt sie)", visible.toTypedArray(), checked) {
+                val keep = visible.filterIndexed { i, _ -> checked[i] }.toSet()
+                done(names.filter { it !in keep }.toSet())
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("$title – was soll $code sehen? (${names.size} Gruppen)")
+            .setItems(arrayOf(
+                "Wie bei mir (${names.size - mine.count { it in names }} sichtbar)",
+                "Nach Ländern auswählen …",
+                "Einzelne Gruppen auswählen …",
+                "Alles",
+                if (byCountry.containsKey("XXX")) "Alles außer 🔞 Erwachsene" else null
+            ).filterNotNull().toTypedArray()) { _, w ->
+                when (w) {
+                    0 -> done(mine.filter { it in names }.toSet())
+                    1 -> {
+                        val checked = BooleanArray(codes.size) { i -> byCountry[codes[i]]!!.any { it !in mine } && codes[i] != "XXX" }
+                        val labels = codes.map { c -> "${Countries.label(c)}  ·  ${byCountry[c]!!.size} Gruppen" }.toTypedArray()
+                        Dialogs.multiChoice(this, "$title – welche Länder?", labels, checked) {
+                            val visible = codes.filterIndexed { i, _ -> checked[i] }.flatMap { byCountry[it]!! }
+                            if (visible.isEmpty()) { done(names.toSet()); return@multiChoice }
+                            AlertDialog.Builder(this)
+                                .setTitle("${visible.size} Gruppen ausgewählt")
+                                .setMessage("Möchtest du in diesen Ländern noch einzelne Gruppen abwählen?")
+                                .setPositiveButton("Einzeln anpassen") { _, _ -> fineTune(visible) }
+                                .setNegativeButton("So übernehmen") { _, _ -> done(names.filter { it !in visible }.toSet()) }
+                                .show()
+                        }
+                    }
+                    2 -> fineTune(codes.flatMap { byCountry[it]!! })
+                    3 -> done(emptySet())
+                    4 -> done(byCountry["XXX"]!!.toSet())
+                }
+            }.show()
     }
 
     private fun pickFavs(code: String, pick: Pick) {
@@ -246,22 +307,13 @@ class PlaylistActivity : Activity() {
         }
         if (favs.length() == 0) favs.put(JSONObject().put("n", "Favoriten").put("k", JSONArray()))
         prefs.put("favlists", JSONObject().put("t", "s").put("v", favs.toString()))
-        // Länder: alles andere ausblenden – TV und, soweit ladbar, Filme/Serien
+        // genaue Auswahl je Bereich
         val pid = Repo.playlistId
-        val keep = pick.countries
-        if (keep != null && pid != null) {
-            fun hide(key: String, names: List<String>) {
-                val h = names.filter { Countries.code(it) !in keep }
-                prefs.put("hidden_$key", JSONObject().put("t", "set").put("v", JSONArray(h)))
-            }
-            hide(pid, Repo.groups)
-            val p = store.playlists().firstOrNull { it.id == pid }
-            if (p != null) for (series in listOf(false, true)) {
-                try {
-                    val cat = Vod.catalog(this@PlaylistActivity, p, series, null)
-                    if (cat.categories.isNotEmpty()) hide(pid + if (series) ":series" else ":movies", cat.categories.map { it.name })
-                } catch (_: Exception) { }
-            }
+        if (pid != null) {
+            fun put(key: String, h: Set<String>) = prefs.put("hidden_$key", JSONObject().put("t", "set").put("v", JSONArray(h.toList())))
+            pick.hidden["live"]?.let { put(pid, it) }
+            pick.hidden["movies"]?.let { put("$pid:movies", it) }
+            pick.hidden["series"]?.let { put("$pid:series", it) }
         }
         root.toString()
     }

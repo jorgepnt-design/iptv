@@ -1,1 +1,1 @@
-{ "functions": { "api/categories.js": { "maxDuration": 60 } } }
+{ "regions": ["fra1"], "functions": { "api/categories.js": { "maxDuration": 60 } } }
