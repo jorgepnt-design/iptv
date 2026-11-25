@@ -19,6 +19,8 @@ import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -164,17 +166,121 @@ class PlaylistActivity : Activity() {
                 val code = Remote.normalize(input.text.toString())
                 if (code == null) { Toast.makeText(this, "Ungültiger Gerätecode", Toast.LENGTH_LONG).show(); return@setPositiveButton }
                 if (code == Remote.deviceCode(this)) { Toast.makeText(this, "Das ist der Code dieses Geräts", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-                val json = store.exportJson()
-                scope.launch {
+                chooseScope(code)
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
+    // ---------- Auswahl, was der andere bekommt ----------
+
+    private class Pick(var playlists: Set<String>, var countries: Set<String>?, var favLists: Set<String>)
+
+    private fun chooseScope(code: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Was soll $code bekommen?")
+            .setItems(arrayOf(
+                "Alles wie bei mir",
+                "Auswählen: Playlists, Länder und Favoritenlisten …"
+            )) { _, w ->
+                val all = Pick(store.playlists().map { it.id }.toSet(), null, store.favLists().map { it.name }.toSet())
+                if (w == 0) send(code, all) else pickPlaylists(code, all)
+            }.show()
+    }
+
+    private fun pickPlaylists(code: String, pick: Pick) {
+        val pls = store.playlists()
+        if (pls.size <= 1) { pickCountries(code, pick); return }
+        val checked = BooleanArray(pls.size) { true }
+        Dialogs.multiChoice(this, "Welche Playlists?", pls.map { it.name }.toTypedArray(), checked) {
+            pick.playlists = pls.filterIndexed { i, _ -> checked[i] }.map { it.id }.toSet()
+            if (pick.playlists.isEmpty()) { Toast.makeText(this, "Mindestens eine Playlist wählen", Toast.LENGTH_LONG).show(); return@multiChoice }
+            pickCountries(code, pick)
+        }
+    }
+
+    private fun pickCountries(code: String, pick: Pick) {
+        val pid = Repo.playlistId
+        if (pid == null || pid !in pick.playlists || Repo.groups.isEmpty()) { pickFavs(code, pick); return }
+        val hidden = store.hiddenGroups(pid)
+        val byCountry = Repo.groups.groupBy { Countries.code(it) }
+        val codes = byCountry.keys.sortedWith(compareBy({ it == "?" }, { -(byCountry[it]?.size ?: 0) }))
+        val labels = codes.map { c -> "${Countries.label(c)}  ·  ${byCountry[c]?.size} Gruppen" }.toTypedArray()
+        val checked = BooleanArray(codes.size) { i -> byCountry[codes[i]]!!.any { it !in hidden } }
+        val name = store.playlists().firstOrNull { it.id == pid }?.name ?: ""
+        Dialogs.multiChoice(this, "Welche Länder? („$name“ – TV, Filme und Serien)", labels, checked) {
+            pick.countries = codes.filterIndexed { i, _ -> checked[i] }.toSet()
+            if (pick.countries!!.isEmpty()) { Toast.makeText(this, "Mindestens ein Land wählen", Toast.LENGTH_LONG).show(); return@multiChoice }
+            pickFavs(code, pick)
+        }
+    }
+
+    private fun pickFavs(code: String, pick: Pick) {
+        val fl = store.favLists().filter { it.keys.isNotEmpty() }
+        if (fl.isEmpty()) { send(code, pick); return }
+        val checked = BooleanArray(fl.size) { true }
+        Dialogs.multiChoice(this, "Welche Favoritenlisten?", fl.map { "★ ${it.name}  (${it.keys.size} Sender)" }.toTypedArray(), checked) {
+            pick.favLists = fl.filterIndexed { i, _ -> checked[i] }.map { it.name }.toSet()
+            send(code, pick)
+        }
+    }
+
+    /** Sicherung für den anderen zusammenstellen: nur das Gewählte, ohne persönlichen Verlauf */
+    private suspend fun buildFor(pick: Pick): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val root = JSONObject(store.exportJson())
+        val prefs = root.getJSONObject("prefs")
+        val removedPids = store.playlists().map { it.id }.filter { it !in pick.playlists }
+        prefs.keys().asSequence().toList().forEach { k ->
+            val personal = k.startsWith("recent_") || k.startsWith("pos_") || k.startsWith("dur_") || k == "recDir" || k == "lastBackup"
+            val ofRemoved = removedPids.any { k.endsWith(it) || k.contains("_$it") || k.startsWith("$it:") || k.contains("$it:") }
+            if (personal || ofRemoved) prefs.remove(k)
+        }
+        // Playlists
+        val plArr = JSONArray(store.playlists().filter { it.id in pick.playlists }.map { it.toJson() })
+        prefs.put("playlists", JSONObject().put("t", "s").put("v", plArr.toString()))
+        if (store.activeId !in pick.playlists) pick.playlists.firstOrNull()?.let { prefs.put("active", JSONObject().put("t", "s").put("v", it)) }
+        // Favoritenlisten
+        val favs = JSONArray()
+        store.favLists().filter { it.name in pick.favLists }.forEach { f ->
+            favs.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList())).put("m", f.manual))
+        }
+        if (favs.length() == 0) favs.put(JSONObject().put("n", "Favoriten").put("k", JSONArray()))
+        prefs.put("favlists", JSONObject().put("t", "s").put("v", favs.toString()))
+        // Länder: alles andere ausblenden – TV und, soweit ladbar, Filme/Serien
+        val pid = Repo.playlistId
+        val keep = pick.countries
+        if (keep != null && pid != null) {
+            fun hide(key: String, names: List<String>) {
+                val h = names.filter { Countries.code(it) !in keep }
+                prefs.put("hidden_$key", JSONObject().put("t", "set").put("v", JSONArray(h)))
+            }
+            hide(pid, Repo.groups)
+            val p = store.playlists().firstOrNull { it.id == pid }
+            if (p != null) for (series in listOf(false, true)) {
+                try {
+                    val cat = Vod.catalog(this@PlaylistActivity, p, series, null)
+                    if (cat.categories.isNotEmpty()) hide(pid + if (series) ":series" else ":movies", cat.categories.map { it.name })
+                } catch (_: Exception) { }
+            }
+        }
+        root.toString()
+    }
+
+    private fun send(code: String, pick: Pick) {
+        val wait = Toast.makeText(this, "Wird vorbereitet und gesendet …", Toast.LENGTH_LONG).also { it.show() }
+        scope.launch {
+            val json = try { buildFor(pick) } catch (e: Exception) {
+                wait.cancel(); Toast.makeText(this@PlaylistActivity, "Fehler beim Vorbereiten: ${e.message}", Toast.LENGTH_LONG).show(); return@launch
+            }
+            run {
                     val err = try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Remote.sendBackup(code, json) }; null } catch (e: Exception) { e.message ?: "Fehler" }
                     if (err == null) AlertDialog.Builder(this@PlaylistActivity).setTitle("✓ Gesendet an $code")
                         .setMessage("Sobald auf dem anderen Gerät PintoTV geöffnet wird, erscheint dort die Frage, ob die Einrichtung übernommen werden soll.")
                         .setPositiveButton("OK", null).show()
                     else Toast.makeText(this@PlaylistActivity, "Senden fehlgeschlagen: $err", Toast.LENGTH_LONG).show()
-                }
             }
-            .setNegativeButton("Abbrechen", null)
-            .show()
+            wait.cancel()
+        }
     }
 
     override fun onDestroy() {

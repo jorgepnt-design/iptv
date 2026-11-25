@@ -1,6 +1,6 @@
 {
-  "versionCode": 55,
-  "versionName": "2.43",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=55",
-  "notes": "• Fern-Einrichtung: Jedes Gerät hat einen Gerätecode (Playlists-Bildschirm oben)\n• Auf pintotv-setup.vercel.app eine Playlist für einen Gerätecode eintragen – das Gerät holt sie automatisch\n• Playlists → ⇄ Übertragen → „Meine Einrichtung an Gerätecode senden“\n• Listen springen am Ende wieder an den Anfang"
+  "versionCode": 56,
+  "versionName": "2.44",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=56",
+  "notes": "• Einrichtung an Gerätecode senden: auswählen, welche Playlists, Länder (TV, Filme, Serien) und Favoritenlisten der andere bekommt\n• Eigener Verlauf und Wiedergabe-Positionen werden nicht mitgeschickt"
 }
