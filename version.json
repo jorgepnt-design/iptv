@@ -1,6 +1,6 @@
 {
-  "versionCode": 74,
-  "versionName": "2.62",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=74",
-  "notes": "• Ton-Einstellung wird angezeigt: in der Vorschau rechts und in der Info-Leiste (🔊 +200 ms · Stereo)\n• Info-Leiste offen → nochmal ▶ rechts öffnet direkt die Ton-Synchronisierung"
+  "versionCode": 75,
+  "versionName": "2.63",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=75",
+  "notes": "• Neu: Menü → 👥 Verwaltung für Freunde & Familie – Name, eigene Zugangsdaten, Gerätecode, Notiz\n• Pro Person Länder/Gruppen für TV, Filme, Serien auswählen und speichern\n• Mit einem Klick an sein Gerät senden, Konto prüfen (Ablaufdatum, Verbindungen)"
 }

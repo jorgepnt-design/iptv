@@ -272,6 +272,10 @@ class Store(ctx: Context) {
     fun getString(k: String, def: String): String = sp.getString(k, def) ?: def
     fun putString(k: String, v: String) = sp.edit().putString(k, v).apply()
 
+    /** Verwaltung: Personen mit eigenen Zugangsdaten */
+    fun people(): JSONArray = try { JSONArray(sp.getString("people", "[]")) } catch (e: Exception) { JSONArray() }
+    fun savePeople(a: JSONArray) = sp.edit().putString("people", a.toString()).commit()
+
     /** gespeicherte Auswahl-Vorlagen fürs Senden an andere Geräte */
     fun sendTemplates(): JSONArray = try { JSONArray(sp.getString("send_templates", "[]")) } catch (e: Exception) { JSONArray() }
     fun saveSendTemplates(a: JSONArray) = sp.edit().putString("send_templates", a.toString()).commit()

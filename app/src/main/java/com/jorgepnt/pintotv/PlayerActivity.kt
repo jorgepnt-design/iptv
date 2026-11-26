@@ -474,7 +474,7 @@ class PlayerActivity : Activity() {
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         if (tsMode) "▶ Zurück zu Live" else "⏸ Pause (Timeshift)",
         if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
-        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "🔊 Ton-Synchronisierung", "Nach Updates suchen", "Beenden"
+        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "🔊 Ton-Synchronisierung", "👥 Verwaltung", "Nach Updates suchen", "Beenden"
     )
 
     private fun initLists() {
@@ -1576,6 +1576,7 @@ class PlayerActivity : Activity() {
             item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
             item == "Aktualisieren" -> { hideOverlay(); load(true) }
             item.startsWith("Stream-Format") -> chooseStreamFormat(i)
+            item == "👥 Verwaltung" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java).putExtra("people", true), REQ_PLAYLIST) }
             item == "🔊 Ton-Synchronisierung" -> { hideOverlay(); ui.postDelayed({ audioSyncDialog() }, 150) }
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
             item == "⏸ Pause (Timeshift)" -> { hideOverlay(); ui.postDelayed({ togglePause() }, 200) }

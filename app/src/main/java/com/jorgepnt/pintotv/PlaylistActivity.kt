@@ -40,6 +40,7 @@ class PlaylistActivity : Activity() {
         store = Store(this)
         list = findViewById(R.id.plList)
         findViewById<TextView>(R.id.plVersion).text = "PintoTV ${appVersion(this)}   ·   Gerätecode: ${Remote.deviceCode(this)}"
+        if (intent.getBooleanExtra("people", false)) list.post { showPeople() }
         adapter = TextAdapter(
             onFocus = { pos -> if (pos >= 0) marked = pos },
             onClick = { pos -> store.playlists().getOrNull(pos)?.let { select(it) } },
@@ -173,6 +174,225 @@ class PlaylistActivity : Activity() {
             }
             .setNegativeButton("Abbrechen", null)
             .show()
+    }
+
+    // ---------- Verwaltung: Freunde & Familie ----------
+
+    private fun people(): MutableList<JSONObject> = store.people().let { a -> (0 until a.length()).map { a.getJSONObject(it) }.toMutableList() }
+
+    private fun savePerson(o: JSONObject) {
+        val l = people().filter { it.optString("id") != o.optString("id") }.toMutableList()
+        l.add(o); l.sortBy { it.optString("name").lowercase() }
+        store.savePeople(JSONArray(l))
+    }
+
+    private fun showPeople() {
+        val l = people()
+        val items = listOf("➕ Neue Person anlegen") + l.map { p ->
+            val sel = p.optString("sum").ifBlank { "alles" }
+            "👤 ${p.optString("name")}   ·   $sel"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("👥 Verwaltung – ${l.size} ${if (l.size == 1) "Person" else "Personen"}")
+            .setItems(items.toTypedArray()) { _, w -> if (w == 0) editPerson(null) else personMenu(l[w - 1]) }
+            .setNegativeButton("Schließen", null)
+            .show()
+    }
+
+    private fun personPlaylist(p: JSONObject): Playlist {
+        val url = p.optString("url")
+        return if (url.isNotBlank()) Playlist("person_" + p.optString("id"), p.optString("name"), "m3u", url, "", "", "", "")
+        else Playlist("person_" + p.optString("id"), p.optString("name"), "xtream", "", p.optString("server"), p.optString("user"), p.optString("pass"), "")
+    }
+
+    private fun personMenu(p: JSONObject) {
+        val code = p.optString("code")
+        val opts = ArrayList<Pair<String, () -> Unit>>()
+        opts.add("📤 Einrichtung senden" + (if (code.isNotBlank()) "  (an $code)" else "") to { sendPerson(p) })
+        opts.add("🌍 Länder / Gruppen auswählen  ·  ${p.optString("sum").ifBlank { "alles" }}" to { pickPersonGroups(p) })
+        opts.add("ℹ️ Konto prüfen (Ablauf, Verbindungen)" to { checkAccount(p) })
+        opts.add("✏️ Zugangsdaten bearbeiten" to { editPerson(p) })
+        opts.add("📋 Zugangsdaten anzeigen" to {
+            AlertDialog.Builder(this).setTitle(p.optString("name"))
+                .setMessage(if (p.optString("url").isNotBlank()) "M3U:\n${p.optString("url")}" else
+                    "Server: ${p.optString("server")}\nBenutzer: ${p.optString("user")}\nPasswort: ${p.optString("pass")}" +
+                    (if (code.isNotBlank()) "\nGerätecode: $code" else "") +
+                    (p.optString("note").takeIf { it.isNotBlank() }?.let { "\n\nNotiz: $it" } ?: ""))
+                .setPositiveButton("OK") { _, _ -> personMenu(p) }.show()
+        })
+        opts.add("🗑 Löschen" to {
+            AlertDialog.Builder(this).setTitle("„${p.optString("name")}“ löschen?")
+                .setPositiveButton("Löschen") { _, _ ->
+                    store.savePeople(JSONArray(people().filter { it.optString("id") != p.optString("id") }))
+                    showPeople()
+                }.setNegativeButton("Abbrechen") { _, _ -> personMenu(p) }.show()
+        })
+        AlertDialog.Builder(this).setTitle("👤 ${p.optString("name")}")
+            .setItems(opts.map { it.first }.toTypedArray()) { _, w -> opts[w].second() }
+            .setNegativeButton("Zurück") { _, _ -> showPeople() }
+            .show()
+    }
+
+    private fun editPerson(old: JSONObject?) {
+        val dp = resources.displayMetrics.density
+        val own = store.active()
+        fun field(label: String, value: String, hintText: String = "", secret: Boolean = false): EditText {
+            return EditText(this).apply {
+                hint = label + if (hintText.isNotBlank()) " – $hintText" else ""
+                setText(value); isSingleLine = true
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                    (if (secret) android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD else 0)
+            }
+        }
+        val name = field("Name", old?.optString("name") ?: "", "z. B. Paulo")
+        // neuer Eintrag: Server vom eigenen Anbieter vorschlagen
+        val server = field("Server-Adresse oder M3U-Link", old?.optString("url")?.ifBlank { old.optString("server") }
+            ?: (own?.takeIf { it.type == "xtream" }?.server ?: ""))
+        val user = field("Benutzername", old?.optString("user") ?: "")
+        val pass = field("Passwort", old?.optString("pass") ?: "", secret = true)
+        val code = field("Gerätecode (optional)", old?.optString("code") ?: "", "PT-XXXX-XXXX")
+        val note = field("Notiz (optional)", old?.optString("note") ?: "", "z. B. Ablauf, Gerät")
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((20 * dp).toInt(), (8 * dp).toInt(), (20 * dp).toInt(), 0)
+            listOf(name, server, user, pass, code, note).forEach { addView(it) }
+        }
+        val sc = android.widget.ScrollView(this).apply { addView(box) }
+        AlertDialog.Builder(this)
+            .setTitle(if (old == null) "➕ Neue Person" else "✏️ ${old.optString("name")}")
+            .setView(sc)
+            .setPositiveButton("Speichern") { _, _ ->
+                val n = name.text.toString().trim()
+                val srv = server.text.toString().trim()
+                if (n.isEmpty() || srv.isEmpty()) { Toast.makeText(this, "Name und Server/Link sind nötig", Toast.LENGTH_LONG).show(); editPerson(old); return@setPositiveButton }
+                val isM3u = srv.contains("get.php", true) || srv.contains(".m3u", true) || srv.contains("type=m3u", true)
+                val c = code.text.toString().takeIf { it.isNotBlank() }?.let { Remote.normalize(it) }
+                if (code.text.isNotBlank() && c == null) Toast.makeText(this, "Gerätecode ungültig – nicht gespeichert", Toast.LENGTH_LONG).show()
+                val o = (old?.let { JSONObject(it.toString()) } ?: JSONObject().put("id", java.util.UUID.randomUUID().toString()))
+                    .put("name", n).put("note", note.text.toString().trim()).put("code", c ?: "")
+                if (isM3u) o.put("url", srv).put("server", "").put("user", "").put("pass", "")
+                else o.put("url", "").put("server", srv).put("user", user.text.toString().trim()).put("pass", pass.text.toString().trim())
+                savePerson(o)
+                Toast.makeText(this, "„$n“ gespeichert", Toast.LENGTH_SHORT).show()
+                personMenu(o)
+            }
+            .setNegativeButton("Abbrechen") { _, _ -> if (old != null) personMenu(old) else showPeople() }
+            .show()
+    }
+
+    /** Gruppen mit den Zugangsdaten der Person laden (der Fernseher erreicht den Anbieter) und auswählen */
+    private fun pickPersonGroups(p: JSONObject) {
+        val pl = personPlaylist(p)
+        val h = p.optJSONObject("h") ?: JSONObject()
+        fun set(k: String) = h.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+        val t = Toast.makeText(this, "Gruppen von „${p.optString("name")}“ werden geladen …", Toast.LENGTH_LONG).also { it.show() }
+        scope.launch {
+            val live = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Repo.fetch(this@PlaylistActivity, pl, store.streamFormat, false, null).channels.map { it.group }.distinct()
+                }
+            } catch (e: Exception) {
+                t.cancel(); Toast.makeText(this@PlaylistActivity, "Laden fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show(); personMenu(p); return@launch
+            }
+            t.cancel()
+            pickSection("", "📺 TV", live, set("live") ?: emptySet(), true) { hl ->
+                hl?.let { h.put("live", JSONArray(it.toList())) }
+                loadVodNames(pl, false, pl.type == "xtream") { movies ->
+                    pickSection("", "🎬 Filme", movies, set("movies") ?: emptySet(), true) { hm ->
+                        hm?.let { h.put("movies", JSONArray(it.toList())) }
+                        loadVodNames(pl, true, pl.type == "xtream") { series ->
+                            pickSection("", "📺 Serien", series, set("series") ?: emptySet(), true) { hs ->
+                                hs?.let { h.put("series", JSONArray(it.toList())) }
+                                p.put("h", h)
+                                p.put("sum", summary(live, set2(h, "live")))
+                                savePerson(p)
+                                Toast.makeText(this@PlaylistActivity, "Auswahl für „${p.optString("name")}“ gespeichert", Toast.LENGTH_SHORT).show()
+                                personMenu(p)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun set2(h: JSONObject, k: String): Set<String> = h.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
+
+    /** kurze Beschreibung der sichtbaren Länder, z. B. „🇩🇪 🇵🇹 · 🔞 aus“ */
+    private fun summary(groups: List<String>, hidden: Set<String>): String {
+        val vis = groups.filter { it !in hidden }
+        if (hidden.isEmpty()) return "alles"
+        if (vis.isEmpty()) return "nichts"
+        val codes = vis.map { Countries.code(it) }.distinct().filter { it != "?" && it != "XXX" }
+        val flags = codes.take(8).joinToString(" ") { c -> Countries.flagEmoji(c).ifEmpty { c } } + if (codes.size > 8) " …" else ""
+        val xxx = groups.any { Countries.code(it) == "XXX" }
+        return (if (flags.isBlank()) "${vis.size} Gruppen" else flags) + if (xxx && vis.none { Countries.code(it) == "XXX" }) " · 🔞 aus" else ""
+    }
+
+    private fun sendPerson(p: JSONObject) {
+        val payload = JSONObject()
+        if (p.optString("url").isNotBlank()) payload.put("type", "m3u").put("url", p.optString("url"))
+        else payload.put("type", "xtream").put("server", p.optString("server")).put("user", p.optString("user")).put("pass", p.optString("pass"))
+        payload.put("name", "PintoTV")
+        p.optJSONObject("h")?.let { payload.put("hidden", it) }
+        fun go(code: String) {
+            scope.launch {
+                val err = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Remote.sendPlaylist(code, payload) }; null
+                } catch (e: Exception) { e.message ?: "Fehler" }
+                if (err == null) {
+                    if (p.optString("code") != code) { p.put("code", code); savePerson(p) }
+                    AlertDialog.Builder(this@PlaylistActivity).setTitle("✓ Gesendet an ${p.optString("name")}")
+                        .setMessage("Gerätecode $code.\nSobald PintoTV dort geöffnet wird, erscheint die Frage, ob die Playlist hinzugefügt werden soll.")
+                        .setPositiveButton("OK") { _, _ -> personMenu(p) }.show()
+                } else Toast.makeText(this@PlaylistActivity, "Senden fehlgeschlagen: $err", Toast.LENGTH_LONG).show()
+            }
+        }
+        val saved = p.optString("code")
+        val input = EditText(this).apply {
+            hint = "PT-XXXX-XXXX"; isSingleLine = true; setText(saved)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        AlertDialog.Builder(this).setTitle("Gerätecode von ${p.optString("name")}")
+            .setMessage(if (saved.isNotBlank()) "Gespeicherter Code – einfach „Senden“ drücken oder ändern." else "Den Code zeigt PintoTV auf seinem Fernseher oben im Playlists-Bildschirm.")
+            .setView(input)
+            .setPositiveButton("Senden") { _, _ ->
+                val c = Remote.normalize(input.text.toString())
+                if (c == null) { Toast.makeText(this, "Ungültiger Gerätecode", Toast.LENGTH_LONG).show(); sendPerson(p) } else go(c)
+            }
+            .setNegativeButton("Abbrechen") { _, _ -> personMenu(p) }
+            .show()
+    }
+
+    /** Xtream-Konto prüfen: Status, Ablaufdatum, Verbindungen */
+    private fun checkAccount(p: JSONObject) {
+        if (p.optString("url").isNotBlank()) { Toast.makeText(this, "Nur bei Xtream-Zugängen möglich", Toast.LENGTH_LONG).show(); return }
+        val pl = Xtream.normalize(personPlaylist(p))
+        scope.launch {
+            val msg = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Http.threadUA.set(store.userAgent(store.active()?.id ?: "") ?: Http.UA)
+                    try {
+                        val b = pl.server.trimEnd('/')
+                        val u = JSONObject(Http.text("$b/player_api.php?username=${java.net.URLEncoder.encode(pl.user, "UTF-8")}&password=${java.net.URLEncoder.encode(pl.pass, "UTF-8")}"))
+                            .optJSONObject("user_info") ?: throw java.io.IOException("Keine Kontodaten erhalten")
+                        if (u.optString("auth") == "0") "❌ Zugangsdaten falsch"
+                        else {
+                            val exp = u.optString("exp_date").toLongOrNull()
+                            val expTxt = exp?.let {
+                                val d = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date(it * 1000))
+                                val days = ((it * 1000 - System.currentTimeMillis()) / 86_400_000L)
+                                "$d  (${if (days >= 0) "noch $days Tage" else "abgelaufen"})"
+                            } ?: "unbegrenzt"
+                            "Status: ${u.optString("status").ifBlank { "?" }}\nGültig bis: $expTxt\n" +
+                                "Verbindungen: ${u.optString("active_cons", "0")} von ${u.optString("max_connections", "?")} aktiv"
+                        }
+                    } finally { Http.threadUA.set(null) }
+                }
+            } catch (e: Exception) { "Prüfen fehlgeschlagen: ${e.message}" }
+            AlertDialog.Builder(this@PlaylistActivity).setTitle("ℹ️ ${p.optString("name")}")
+                .setMessage(msg).setPositiveButton("OK") { _, _ -> personMenu(p) }.show()
+        }
     }
 
     // ---------- Auswahl, was der andere bekommt ----------
@@ -392,7 +612,7 @@ class PlaylistActivity : Activity() {
         val prefs = root.getJSONObject("prefs")
         val removedPids = store.playlists().map { it.id }.filter { it !in pick.playlists }
         prefs.keys().asSequence().toList().forEach { k ->
-            val personal = k.startsWith("recent_") || k.startsWith("pos_") || k.startsWith("dur_") || k == "recDir" || k == "lastBackup" || k == "send_templates"
+            val personal = k.startsWith("recent_") || k.startsWith("pos_") || k.startsWith("dur_") || k == "recDir" || k == "lastBackup" || k == "send_templates" || k == "people"
             val ofRemoved = removedPids.any { k.endsWith(it) || k.contains("_$it") || k.startsWith("$it:") || k.contains("$it:") }
             if (personal || ofRemoved) prefs.remove(k)
         }
@@ -477,9 +697,11 @@ class PlaylistActivity : Activity() {
                 "📱 Mit dem Handy sichern / laden",
                 "🗂 Automatische Sicherungen (wöchentlich)",
                 "🌐 Fern-Einrichtung: Gerätecode anzeigen",
-                "📤 Meine Einrichtung an Gerätecode senden"
+                "📤 Meine Einrichtung an Gerätecode senden",
+                "👥 Verwaltung: Freunde & Familie"
             )) { _, w ->
                 when (w) {
+                    6 -> showPeople()
                     4 -> showDeviceCode()
                     5 -> sendToCode()
                     3 -> showAutoBackups()

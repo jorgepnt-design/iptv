@@ -75,6 +75,11 @@ object Remote {
         call("DELETE", "/api/setup?code=${q(deviceCode(ctx))}&upto=${q(upto)}")
     }
 
+    /** einzelne Playlist (mit Auswahl) an ein Gerät schicken */
+    fun sendPlaylist(code: String, payload: JSONObject) {
+        call("POST", "/api/setup", JSONObject().put("code", code).put("kind", "playlist").put("payload", payload).toString())
+    }
+
     /** eigene komplette Einrichtung an ein anderes Gerät schicken */
     fun sendBackup(code: String, exportJson: String) {
         call("POST", "/api/setup", JSONObject().put("code", code).put("kind", "backup").put("payload", JSONObject(exportJson)).toString())
