@@ -470,6 +470,18 @@
                 android:textSize="15sp" />
 
             <TextView
+                android:id="@+id/detailAudio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/count_bg"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textColor="@color/text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/detailDesc"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

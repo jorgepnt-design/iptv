@@ -1,6 +1,6 @@
 {
-  "versionCode": 73,
-  "versionName": "2.61",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=73",
-  "notes": "• Ton-Synchronisierung: Tonformat Stereo/Original direkt umschalten – wirkt sofort, das Feld bleibt offen"
+  "versionCode": 74,
+  "versionName": "2.62",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=74",
+  "notes": "• Ton-Einstellung wird angezeigt: in der Vorschau rechts und in der Info-Leiste (🔊 +200 ms · Stereo)\n• Info-Leiste offen → nochmal ▶ rechts öffnet direkt die Ton-Synchronisierung"
 }

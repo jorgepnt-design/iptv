@@ -282,6 +282,17 @@ class PlayerActivity : Activity() {
 
     private fun audioKey(c: Channel) = "adelay_" + favKey(c)
 
+    /** z. B. „🔊 Ton 200 ms später · nur dieser Sender · Stereo“ – null, wenn nichts eingestellt ist */
+    private fun audioInfo(c: Channel): String? {
+        val own = store.getString(audioKey(c), "").toLongOrNull()
+        val all = store.getString("adelay_all", "0").toLongOrNull() ?: 0
+        val ms = own ?: all
+        val parts = ArrayList<String>()
+        if (ms != 0L) parts.add((if (ms > 0) "Ton $ms ms später" else "Ton ${-ms} ms früher") + if (own != null) " · nur dieser Sender" else " · alle Sender")
+        if (store.getString("forcePcm", "0") == "1") parts.add("Stereo")
+        return if (parts.isEmpty()) null else "🔊 " + parts.joinToString(" · ")
+    }
+
     /** Ton-Verschiebung: eigene des Senders, sonst die allgemeine */
     private fun applyAudioDelay(c: Channel) {
         val ms = store.getString(audioKey(c), "").toLongOrNull() ?: store.getString("adelay_all", "0").toLongOrNull() ?: 0
@@ -1532,6 +1543,11 @@ class PlayerActivity : Activity() {
             setTypeface(null, if (cur != null) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         }
         findViewById<TextView>(R.id.detailTime).text = cur?.let { Fmt.range(it) } ?: Countries.pretty(c.group)
+        findViewById<TextView>(R.id.detailAudio).apply {
+            val t = audioInfo(c)
+            visibility = if (t == null) View.GONE else View.VISIBLE
+            text = t ?: ""
+        }
         findViewById<TextView>(R.id.detailDesc).text = cur?.desc ?: ""
         findViewById<TextView>(R.id.detailNext).text = next?.let { "Danach: ${Fmt.time(it.start)}  ${it.title}" } ?: ""
     }
@@ -1666,11 +1682,19 @@ class PlayerActivity : Activity() {
         findViewById<TextView>(R.id.bannerGroup).text = Countries.pretty(c.group)
         // kleine Hinweise: Qualität, Favorit, Aufnahme
         val n = c.name.lowercase()
-        val badges = listOfNotNull(
+        val badges = mutableListOf<String>(); badges += listOfNotNull(
             when { "4k" in n || "uhd" in n -> "UHD"; "fhd" in n || "1080" in n -> "FHD"; Regex("\\bhd").containsMatchIn(n) -> "HD"; Regex("\\bsd\\b").containsMatchIn(n) -> "SD"; else -> null },
             if (store.isFavorite(c)) "★" else null,
             if (Recorder.active && Recorder.channelUrl == c.url) "● REC" else null
         )
+        // Ton-Einstellung kurz anzeigen, z. B. „🔊 +200 ms“ oder „🔊 Stereo“
+        run {
+            val own = store.getString(audioKey(c), "").toLongOrNull()
+            val ms = own ?: store.getString("adelay_all", "0").toLongOrNull() ?: 0
+            val pcm = store.getString("forcePcm", "0") == "1"
+            val t = listOfNotNull(if (ms != 0L) (if (ms > 0) "+$ms ms" else "$ms ms") else null, if (pcm) "Stereo" else null)
+            if (t.isNotEmpty()) badges.add("🔊 " + t.joinToString(" · "))
+        }
         findViewById<TextView>(R.id.bannerBadges).text = badges.joinToString("   ")
         findViewById<TextView>(R.id.bannerNow).text =
             cur?.let { "Jetzt   ${Fmt.time(it.start)} – ${Fmt.time(it.stop)}   ${it.title}" } ?: "Keine Programminformationen"
@@ -1796,7 +1820,13 @@ class PlayerActivity : Activity() {
             KeyEvent.KEYCODE_CHANNEL_UP -> { zap(1); return true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { showOverlay("groups"); return true }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_INFO -> { showBanner(); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                // Info-Leiste sichtbar → nochmal rechts öffnet die Ton-Synchronisierung
+                if (e.repeatCount == 0 && findViewById<View>(R.id.banner).visibility == View.VISIBLE) { hideBanner(); audioSyncDialog() }
+                else showBanner()
+                return true
+            }
+            KeyEvent.KEYCODE_INFO -> { showBanner(); return true }
             KeyEvent.KEYCODE_MENU -> { showOverlay("menu"); return true }
             KeyEvent.KEYCODE_GUIDE, KeyEvent.KEYCODE_TV_INPUT -> { openGuide(); return true }
             KeyEvent.KEYCODE_PROG_RED, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { openMulti(); return true }
