@@ -29,6 +29,33 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+/** Ton-Verschiebung für den Hauptplayer (Mikrosekunden, + = Ton später) */
+object AudioSync {
+    @Volatile var offsetUs: Long = 0
+}
+
+/** Audio-Ausgabe mit verschiebbarer Uhr: Bild richtet sich nach dem Ton, also verschiebt das Ton gegenüber Bild */
+class SyncRenderersFactory(ctx: Context, private val forcePcm: Boolean, private val sync: Boolean) :
+    androidx.media3.exoplayer.DefaultRenderersFactory(ctx) {
+    init { setEnableDecoderFallback(true) }
+    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
+        val b = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+        // Stereo erzwingen: kein Durchreichen von Dolby/AC3 an Soundbar/AV-Receiver (häufige Ursache für Versatz)
+        if (forcePcm) b.setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+        val sink = b.build()
+        if (!sync) return sink
+        return object : androidx.media3.exoplayer.audio.ForwardingAudioSink(sink) {
+            override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+                val p = super.getCurrentPositionUs(sourceEnded)
+                if (p == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return p
+                return (p + AudioSync.offsetUs).coerceAtLeast(0)
+            }
+        }
+    }
+}
+
 object Players {
     fun create(ctx: Context, recordable: Boolean = false, ua: () -> String = { Http.UA }): ExoPlayer {
         // Kennung wird bei jedem Stream neu gelesen (passend zur Playlist)
@@ -46,7 +73,8 @@ object Players {
         val extractors = DefaultExtractorsFactory().setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
         )
-        return ExoPlayer.Builder(ctx)
+        val pcm = Store(ctx).getString("forcePcm", "0") == "1"
+        return ExoPlayer.Builder(ctx, SyncRenderersFactory(ctx, pcm, sync = recordable))
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(ctx, http), extractors))
             .build()
     }

@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -269,7 +270,16 @@ class PlayerActivity : Activity() {
         })
     }
 
+    private fun audioKey(c: Channel) = "adelay_" + favKey(c)
+
+    /** Ton-Verschiebung: eigene des Senders, sonst die allgemeine */
+    private fun applyAudioDelay(c: Channel) {
+        val ms = store.getString(audioKey(c), "").toLongOrNull() ?: store.getString("adelay_all", "0").toLongOrNull() ?: 0
+        AudioSync.offsetUs = ms * 1000
+    }
+
     private fun startStream(c: Channel) {
+        applyAudioDelay(c)
         player.setMediaItem(Players.item(c.url))
         player.prepare()
         player.playWhenReady = true
@@ -443,7 +453,7 @@ class PlayerActivity : Activity() {
         "TV-Guide", "Filme", "Serien", "Multi-View", "Suche", "Sortierung: " + if (store.sortByName) "Name" else "Nummer", "Favoritenlisten", "Gruppen / Länder", "Playlists", "Aktualisieren",
         if (tsMode) "▶ Zurück zu Live" else "⏸ Pause (Timeshift)",
         if (Recorder.active) "■ Aufnahme beenden" else "● Aufnahme starten", "Aufnahmen", "Aufnahme-Speicherort", "Aufnahme-Qualität: " + recQualityLabel(),
-        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "Nach Updates suchen", "Beenden"
+        "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "🔊 Ton-Synchronisierung", "Nach Updates suchen", "Beenden"
     )
 
     private fun initLists() {
@@ -604,6 +614,57 @@ class PlayerActivity : Activity() {
                 if (overlay.visibility == View.VISIBLE) focusGroup()
             }
             .setNegativeButton("Abbrechen", null).show()
+    }
+
+    // ---------- Ton-Synchronisierung ----------
+
+    private fun audioSyncDialog() {
+        val c = current ?: run { toast("Zuerst einen Sender abspielen"); return }
+        var ms = AudioSync.offsetUs / 1000
+        val pcm = store.getString("forcePcm", "0") == "1"
+        fun label() = when {
+            ms == 0L -> "Kein Versatz"
+            ms > 0 -> "Ton $ms ms später"
+            else -> "Ton ${-ms} ms früher"
+        }
+        val info = TextView(this).apply {
+            textSize = 26f; setTextColor(android.graphics.Color.WHITE); gravity = android.view.Gravity.CENTER
+            setPadding(30, 30, 30, 10); text = label()
+        }
+        val hint = TextView(this).apply {
+            textSize = 14f; setTextColor(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, R.color.text2))
+            gravity = android.view.Gravity.CENTER; setPadding(30, 0, 30, 20)
+            text = "Kommt die Stimme vor den Lippen → ◀▶ „später“.\nKommt sie danach → „früher“. Wirkt sofort."
+        }
+        fun set(v: Long) {
+            ms = v.coerceIn(-3000, 3000)
+            AudioSync.offsetUs = ms * 1000
+            info.text = label()
+        }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER }
+        listOf(-100L to "◀ früher", 100L to "später ▶").forEach { (d, t) ->
+            row.addView(android.widget.Button(this).apply {
+                text = t; setOnClickListener { set(ms + d) }
+            })
+        }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(info); addView(hint); addView(row) }
+        val d = AlertDialog.Builder(this)
+            .setTitle("🔊 Ton-Synchronisierung · ${c.name}")
+            .setView(box)
+            .setPositiveButton("Für diesen Sender merken") { _, _ ->
+                store.putString(audioKey(c), ms.toString()); toast("Gespeichert für ${c.name}: ${label()}")
+            }
+            .setNeutralButton(if (pcm) "Tonformat: Stereo ✓" else "Tonformat: Original") { _, _ ->
+                store.putString("forcePcm", if (pcm) "0" else "1")
+                toast(if (pcm) "Original-Tonformat (Dolby wird durchgereicht) – wirkt nach Neustart der App" else "Stereo erzwungen – hilft oft bei Versatz mit Soundbar. Wirkt nach Neustart der App")
+            }
+            .setNegativeButton("Für alle Sender") { _, _ ->
+                store.putString("adelay_all", ms.toString()); toast("Für alle Sender: ${label()}")
+            }
+            .create()
+        d.setOnDismissListener { applyAudioDelay(c).also { /* nicht gespeichert → wieder gespeicherten Wert */ } }
+        d.show()
+        row.getChildAt(1)?.requestFocus()
     }
 
     // ---------- Timeshift ----------
@@ -1468,6 +1529,7 @@ class PlayerActivity : Activity() {
             item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
             item == "Aktualisieren" -> { hideOverlay(); load(true) }
             item.startsWith("Stream-Format") -> chooseStreamFormat(i)
+            item == "🔊 Ton-Synchronisierung" -> { hideOverlay(); ui.postDelayed({ audioSyncDialog() }, 150) }
             item == "Nach Updates suchen" -> Updater.check(this, scope, quiet = false)
             item == "⏸ Pause (Timeshift)" -> { hideOverlay(); ui.postDelayed({ togglePause() }, 200) }
             item == "▶ Zurück zu Live" -> { hideOverlay(); exitTimeshift(restart = true); toast("Live") }
