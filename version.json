@@ -1,6 +1,6 @@
 {
-  "versionCode": 79,
-  "versionName": "2.67",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=79",
-  "notes": "• Favoriten nach Ländern sortiert (z. B. erst Deutschland, dann Portugal) – Reihenfolge der Länder wie unter „Gruppen / Länder“\n• Abschaltbar: Favoritenlisten → Liste → „🌍 Nach Ländern sortieren“"
+  "versionCode": 80,
+  "versionName": "2.68",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=80",
+  "notes": "• Favoritenlisten-Menü bleibt nach einer Änderung offen (z. B. Länder-Sortierung AN/AUS), Fokus bleibt auf derselben Zeile\n• „Leeren“ fragt jetzt vorher nach"
 }

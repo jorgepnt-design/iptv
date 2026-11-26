@@ -1117,52 +1117,68 @@ class PlayerActivity : Activity() {
             .setTitle("Favoritenlisten")
             .setItems(labels.toTypedArray()) { _, w ->
                 if (w == lists.size) { newFavList { toast("Liste „$it“ angelegt"); afterFavChange(null) }; return@setItems }
-                val fl = lists[w]
-                AlertDialog.Builder(this)
-                    .setTitle("★ ${fl.name}")
-                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren", "⇅ Sender ordnen", "↺ Reihenfolge zurücksetzen (nach Nummer)",
-                        if (store.getString("favByCountry", "1") == "1") "🌍 Nach Ländern sortieren: AN (alle Listen)" else "🌍 Nach Ländern sortieren: AUS (alle Listen)")) { _, a ->
-                        val all = store.favLists()
-                        val i = all.indexOfFirst { it.name == fl.name }
-                        if (i < 0) return@setItems
-                        when (a) {
-                            0 -> {
-                                val input = EditText(this).apply { setText(fl.name); isSingleLine = true }
-                                AlertDialog.Builder(this).setTitle("Umbenennen").setView(input)
-                                    .setPositiveButton("Speichern") { _, _ ->
-                                        val n = input.text.toString().trim()
-                                        if (n.isNotEmpty() && all.none { it.name.equals(n, true) && it !== all[i] }) {
-                                            all[i] = Store.FavList(n, all[i].keys, all[i].manual); store.saveFavLists(all); afterFavChange(null)
-                                        }
-                                    }.setNegativeButton("Abbrechen", null).show()
-                            }
-                            1 -> if (i > 0) { all.add(i - 1, all.removeAt(i)); store.saveFavLists(all); afterFavChange(null) }
-                            4 -> markMany(fl.name, null)
-                            5 -> {
-                                val g = "★ ${fl.name}"
-                                val first = channelsOf(g).firstOrNull() ?: run { toast("Die Liste ist leer"); return@setItems }
-                                if (overlay.visibility != View.VISIBLE) showOverlay()
-                                menuPane.visibility = View.GONE
-                                showGroup(g); focusChannel(0)
-                                ui.postDelayed({ startMove(channelAdapter.items.firstOrNull() ?: first) }, 300)
-                            }
-                            6 -> { all[i].manual = false; store.saveFavLists(all); afterFavChange(null); toast("Wieder nach Nummer sortiert") }
-                            7 -> {
-                                val on = store.getString("favByCountry", "1") != "1"
-                                store.putString("favByCountry", if (on) "1" else "0")
-                                afterFavChange(null)
-                                toast(if (on) "Favoriten nach Ländern sortiert" else "Favoriten ohne Länder-Sortierung")
-                            }
-                            2 -> { all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert") }
-                            3 -> {
-                                if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); return@setItems }
-                                AlertDialog.Builder(this).setTitle("Liste „${fl.name}“ löschen?")
-                                    .setPositiveButton("Löschen") { _, _ -> all.removeAt(i); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ gelöscht") }
-                                    .setNegativeButton("Abbrechen", null).show()
-                            }
-                        }
-                    }.show()
+                favListOptions(lists[w].name)
             }.show()
+    }
+
+    /** Optionen einer Favoritenliste – bleibt nach Einstellungen offen, Fokus auf derselben Zeile */
+    private fun favListOptions(name: String, sel: Int = 0) {
+        val fl = store.favLists().firstOrNull { it.name == name } ?: return
+        val reopen = { a: Int -> ui.postDelayed({ favListOptions(name, a) }, 150) }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("★ ${fl.name}  (${fl.keys.size} Sender)")
+            .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren", "⇅ Sender ordnen", "↺ Reihenfolge zurücksetzen (nach Nummer)",
+                if (store.getString("favByCountry", "1") == "1") "🌍 Nach Ländern sortieren: AN (alle Listen)" else "🌍 Nach Ländern sortieren: AUS (alle Listen)")) { _, a ->
+                val all = store.favLists()
+                val i = all.indexOfFirst { it.name == fl.name }
+                if (i < 0) return@setItems
+                when (a) {
+                    0 -> {
+                        val input = EditText(this).apply { setText(fl.name); isSingleLine = true }
+                        AlertDialog.Builder(this).setTitle("Umbenennen").setView(input)
+                            .setPositiveButton("Speichern") { _, _ ->
+                                val n = input.text.toString().trim()
+                                if (n.isNotEmpty() && all.none { it.name.equals(n, true) && it !== all[i] }) {
+                                    all[i] = Store.FavList(n, all[i].keys, all[i].manual); store.saveFavLists(all); afterFavChange(null)
+                                    ui.postDelayed({ favListOptions(n, 0) }, 150)
+                                } else reopen(0)
+                            }.setNegativeButton("Abbrechen") { _, _ -> reopen(0) }.show()
+                    }
+                    1 -> {
+                        if (i > 0) { all.add(i - 1, all.removeAt(i)); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ ist jetzt an Position $i") }
+                        else toast("„${fl.name}“ steht schon ganz oben")
+                        reopen(a)
+                    }
+                    4 -> markMany(fl.name, null)
+                    5 -> {
+                        val g = "★ ${fl.name}"
+                        val first = channelsOf(g).firstOrNull() ?: run { toast("Die Liste ist leer"); reopen(a); return@setItems }
+                        if (overlay.visibility != View.VISIBLE) showOverlay()
+                        menuPane.visibility = View.GONE
+                        showGroup(g); focusChannel(0)
+                        ui.postDelayed({ startMove(channelAdapter.items.firstOrNull() ?: first) }, 300)
+                    }
+                    6 -> { all[i].manual = false; store.saveFavLists(all); afterFavChange(null); toast("Wieder nach Nummer sortiert"); reopen(a) }
+                    7 -> {
+                        val on = store.getString("favByCountry", "1") != "1"
+                        store.putString("favByCountry", if (on) "1" else "0")
+                        afterFavChange(null)
+                        toast(if (on) "Favoriten nach Ländern sortiert" else "Favoriten ohne Länder-Sortierung")
+                        reopen(a)
+                    }
+                    2 -> AlertDialog.Builder(this).setTitle("„${fl.name}“ leeren?")
+                        .setPositiveButton("Leeren") { _, _ -> all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert"); reopen(a) }
+                        .setNegativeButton("Abbrechen") { _, _ -> reopen(a) }.show()
+                    3 -> {
+                        if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); reopen(a); return@setItems }
+                        AlertDialog.Builder(this).setTitle("Liste „${fl.name}“ löschen?")
+                            .setPositiveButton("Löschen") { _, _ -> all.removeAt(i); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ gelöscht"); ui.postDelayed({ manageFavLists() }, 150) }
+                            .setNegativeButton("Abbrechen") { _, _ -> reopen(a) }.show()
+                    }
+                }
+            }.setNegativeButton("Schließen", null).create()
+        dlg.setOnShowListener { dlg.listView?.let { lv -> lv.setSelection(sel); lv.post { lv.requestFocus(); lv.setSelection(sel) } } }
+        dlg.show()
     }
 
     /** Sender aus einer Liste (oder aus allen) entfernen; Markierung bleibt an derselben Stelle */
