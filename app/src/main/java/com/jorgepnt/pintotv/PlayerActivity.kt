@@ -270,6 +270,16 @@ class PlayerActivity : Activity() {
         })
     }
 
+    /** Player neu aufbauen (z. B. nach Wechsel des Tonformats) und Sender weiterspielen */
+    private fun reloadPlayer() {
+        if (Recorder.active) stopRecording()
+        if (tsMode) exitTimeshift(restart = false)
+        val c = current
+        try { player.release() } catch (_: Exception) { }
+        initPlayer()
+        c?.let { startStream(it) }
+    }
+
     private fun audioKey(c: Channel) = "adelay_" + favKey(c)
 
     /** Ton-Verschiebung: eigene des Senders, sonst die allgemeine */
@@ -661,11 +671,17 @@ class PlayerActivity : Activity() {
                 btn("Merken") { store.putString(audioKey(c), ms.toString()); saved = true; toast("Gespeichert für ${c.name}"); dlg.dismiss() },
                 btn("Alle Sender") { store.putString("adelay_all", ms.toString()); saved = true; toast("Für alle Sender gespeichert"); dlg.dismiss() }
             ))
-            addView(row(btn(if (pcm) "Tonformat: Stereo ✓" else "Tonformat: Original") {
-                store.putString("forcePcm", if (pcm) "0" else "1")
-                toast(if (pcm) "Original-Tonformat – wirkt nach Neustart der App" else "Stereo erzwungen – wirkt nach Neustart der App")
-                dlg.dismiss()
-            }))
+            // Tonformat direkt umschalten – Fenster bleibt offen, Sender startet kurz neu
+            lateinit var fmt: TextView
+            fmt = btn("") {
+                val now = store.getString("forcePcm", "0") == "1"
+                store.putString("forcePcm", if (now) "0" else "1")
+                fmt.text = if (!now) "Tonformat: Stereo ✓" else "Tonformat: Original"
+                reloadPlayer()
+                fmt.requestFocus()
+            }
+            fmt.text = if (pcm) "Tonformat: Stereo ✓" else "Tonformat: Original"
+            addView(row(fmt))
         }
         dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dlg.setContentView(box)

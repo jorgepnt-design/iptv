@@ -1,6 +1,6 @@
 {
-  "versionCode": 72,
-  "versionName": "2.60",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=72",
-  "notes": "• Ton-Synchronisierung als kleines Feld unten rechts – das Bild bleibt sichtbar und wird nicht abgedunkelt"
+  "versionCode": 73,
+  "versionName": "2.61",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=73",
+  "notes": "• Ton-Synchronisierung: Tonformat Stereo/Original direkt umschalten – wirkt sofort, das Feld bleibt offen"
 }
