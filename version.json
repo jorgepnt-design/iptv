@@ -1,6 +1,6 @@
 {
-  "versionCode": 76,
-  "versionName": "2.64",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=76",
-  "notes": "• Verwaltung: Personen bequem mit dem iPhone eintragen oder bearbeiten (QR-Code scannen, Daten eintippen, fertig)"
+  "versionCode": 77,
+  "versionName": "2.65",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=77",
+  "notes": "• Länder nur einmal auswählen – gilt automatisch für TV, Filme und Serien\n• Danach Übersicht: welche Länder, wie viele Gruppen je Bereich, Erwachsene an/aus\n• Verwaltung: „👁 Übersicht der Länder“ pro Person"
 }

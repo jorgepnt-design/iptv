@@ -255,6 +255,12 @@ class PlaylistActivity : Activity() {
         val opts = ArrayList<Pair<String, () -> Unit>>()
         opts.add("📤 Einrichtung senden" + (if (code.isNotBlank()) "  (an $code)" else "") to { sendPerson(p) })
         opts.add("🌍 Länder / Gruppen auswählen  ·  ${p.optString("sum").ifBlank { "alles" }}" to { pickPersonGroups(p) })
+        opts.add("👁 Übersicht der Länder" to {
+            AlertDialog.Builder(this).setTitle("🌍 Länder für ${p.optString("name")}")
+                .setMessage(personCountries(p) + "\n\nGilt für TV, Filme und Serien.")
+                .setPositiveButton("OK") { _, _ -> personMenu(p) }
+                .setNeutralButton("Ändern") { _, _ -> pickPersonGroups(p) }.show()
+        })
         opts.add("ℹ️ Konto prüfen (Ablauf, Verbindungen)" to { checkAccount(p) })
         opts.add("📱 Mit dem iPhone bearbeiten" to { personByPhone(p) })
         opts.add("✏️ Zugangsdaten am Fernseher bearbeiten" to { editPerson(p) })
@@ -326,39 +332,32 @@ class PlaylistActivity : Activity() {
             .show()
     }
 
-    /** Gruppen mit den Zugangsdaten der Person laden (der Fernseher erreicht den Anbieter) und auswählen */
+    /** Länder für eine Person: einmal wählen, gilt für TV, Filme und Serien – mit Übersicht */
     private fun pickPersonGroups(p: JSONObject) {
         val pl = personPlaylist(p)
         val h = p.optJSONObject("h") ?: JSONObject()
-        fun set(k: String) = h.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
-        val t = Toast.makeText(this, "Gruppen von „${p.optString("name")}“ werden geladen …", Toast.LENGTH_LONG).also { it.show() }
-        scope.launch {
-            val live = try {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    Repo.fetch(this@PlaylistActivity, pl, store.streamFormat, false, null).channels.map { it.group }.distinct()
-                }
-            } catch (e: Exception) {
-                t.cancel(); Toast.makeText(this@PlaylistActivity, "Laden fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show(); personMenu(p); return@launch
+        loadAllNames(pl, pl.type == "xtream") { live, movies, series ->
+            if (live.isEmpty() && movies.isEmpty() && series.isEmpty()) { personMenu(p); return@loadAllNames }
+            pickCountriesAll(p.optString("name"), live, movies, series, set2(h, "live"), set2(h, "movies"), set2(h, "series")) { a, b, c, keep ->
+                h.put("live", JSONArray(a.toList())).put("movies", JSONArray(b.toList())).put("series", JSONArray(c.toList()))
+                p.put("h", h)
+                p.put("countries", JSONArray(keep))
+                p.put("sum", summary(live + movies + series, a + b + c))
+                savePerson(p)
+                Toast.makeText(this, "Auswahl für „${p.optString("name")}“ gespeichert", Toast.LENGTH_SHORT).show()
+                personMenu(p)
             }
-            t.cancel()
-            pickSection("", "📺 TV", live, set("live") ?: emptySet(), true) { hl ->
-                hl?.let { h.put("live", JSONArray(it.toList())) }
-                loadVodNames(pl, false, pl.type == "xtream") { movies ->
-                    pickSection("", "🎬 Filme", movies, set("movies") ?: emptySet(), true) { hm ->
-                        hm?.let { h.put("movies", JSONArray(it.toList())) }
-                        loadVodNames(pl, true, pl.type == "xtream") { series ->
-                            pickSection("", "📺 Serien", series, set("series") ?: emptySet(), true) { hs ->
-                                hs?.let { h.put("series", JSONArray(it.toList())) }
-                                p.put("h", h)
-                                p.put("sum", summary(live, set2(h, "live")))
-                                savePerson(p)
-                                Toast.makeText(this@PlaylistActivity, "Auswahl für „${p.optString("name")}“ gespeichert", Toast.LENGTH_SHORT).show()
-                                personMenu(p)
-                            }
-                        }
-                    }
-                }
-            }
+        }
+    }
+
+    /** gespeicherte Länder einer Person als Übersicht */
+    private fun personCountries(p: JSONObject): String {
+        val a = p.optJSONArray("countries") ?: return "alles"
+        val l = (0 until a.length()).map { a.getString(it) }
+        if (l.isEmpty()) return "nichts"
+        return l.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { it })).joinToString("\n") { c ->
+            val f = Countries.flagEmoji(c)
+            "  ${if (f.isNotEmpty()) f else "•"}  ${if (c == "?") "Sonstige / ohne Land" else Countries.label(c)}"
         }
     }
 
@@ -551,40 +550,123 @@ class PlaylistActivity : Activity() {
     /** für jede gewählte Playlist: TV, Filme und Serien auswählen (Gruppen werden direkt geladen) */
     private fun pickCountries(code: String, pick: Pick) {
         val pls = store.playlists().filter { it.id in pick.playlists }
-        val tpl = pick.template != null
         fun step(i: Int) {
             if (i >= pls.size) { pickFavs(code, pick); return }
             val p = pls[i]
-            val tag = if (pls.size > 1) " · ${p.name}" else ""
-            val t = Toast.makeText(this, "Gruppen von „${p.name}“ werden geladen …", Toast.LENGTH_LONG).also { it.show() }
-            scope.launch {
-                val live = try {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        if (Repo.playlistId == p.id && Repo.groups.isNotEmpty()) Repo.groups
-                        else Repo.fetch(this@PlaylistActivity, p, store.streamFormat, false, null).channels.map { it.group }.distinct()
-                    }
-                } catch (e: Exception) { emptyList() }
-                t.cancel()
-                if (live.isEmpty()) Toast.makeText(this@PlaylistActivity, "TV-Gruppen von „${p.name}“ konnten nicht geladen werden", Toast.LENGTH_LONG).show()
-                pickSection(code, "📺 TV$tag", live, pick.hidden["${p.id}|live"] ?: store.hiddenGroups(p.id), tpl) { h ->
-                    h?.let { pick.hidden["${p.id}|live"] = it }
-                    // Filme/Serien: bei Xtream immer, bei M3U nur für die gerade geladene Playlist
-                    val vodOk = p.type == "xtream" || Repo.playlistId == p.id
-                    loadVodNames(p, false, vodOk) { movies ->
-                        pickSection(code, "🎬 Filme$tag", movies, pick.hidden["${p.id}|movies"] ?: store.hiddenGroups("${p.id}:movies"), tpl) { hm ->
-                            hm?.let { pick.hidden["${p.id}|movies"] = it }
-                            loadVodNames(p, true, vodOk) { series ->
-                                pickSection(code, "📺 Serien$tag", series, pick.hidden["${p.id}|series"] ?: store.hiddenGroups("${p.id}:series"), tpl) { hs ->
-                                    hs?.let { pick.hidden["${p.id}|series"] = it }
-                                    step(i + 1)
-                                }
-                            }
+            val vodOk = p.type == "xtream" || Repo.playlistId == p.id
+            loadAllNames(p, vodOk) { live, movies, series ->
+                // „Wie bei mir“ oder Länder auswählen
+                AlertDialog.Builder(this)
+                    .setTitle("„${p.name}“ – was soll das andere Gerät sehen?")
+                    .setItems(arrayOf(if (pick.template != null) "Wie in der Vorlage" else "Wie bei mir", "Länder auswählen (TV, Filme und Serien) …")) { _, w ->
+                        val hl = pick.hidden["${p.id}|live"] ?: store.hiddenGroups(p.id)
+                        val hm = pick.hidden["${p.id}|movies"] ?: store.hiddenGroups("${p.id}:movies")
+                        val hs = pick.hidden["${p.id}|series"] ?: store.hiddenGroups("${p.id}:series")
+                        if (w == 0) {
+                            pick.hidden["${p.id}|live"] = hl; pick.hidden["${p.id}|movies"] = hm; pick.hidden["${p.id}|series"] = hs
+                            step(i + 1)
+                        } else pickCountriesAll(p.name, live, movies, series, hl, hm, hs) { a, b, c, _ ->
+                            pick.hidden["${p.id}|live"] = a; pick.hidden["${p.id}|movies"] = b; pick.hidden["${p.id}|series"] = c
+                            step(i + 1)
                         }
-                    }
-                }
+                    }.show()
             }
         }
         step(0)
+    }
+
+    /** TV, Filme und Serien laden (Gruppen-/Kategorienamen) */
+    private fun loadAllNames(p: Playlist, vodOk: Boolean, then: (List<String>, List<String>, List<String>) -> Unit) {
+        val t = Toast.makeText(this, "Gruppen von „${p.name}“ werden geladen …", Toast.LENGTH_LONG).also { it.show() }
+        scope.launch {
+            val live = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    if (Repo.playlistId == p.id && Repo.groups.isNotEmpty()) Repo.groups
+                    else Repo.fetch(this@PlaylistActivity, p, store.streamFormat, false, null).channels.map { it.group }.distinct()
+                }
+            } catch (e: Exception) { emptyList() }
+            t.cancel()
+            if (live.isEmpty()) Toast.makeText(this@PlaylistActivity, "TV-Gruppen von „${p.name}“ konnten nicht geladen werden", Toast.LENGTH_LONG).show()
+            loadVodNames(p, false, vodOk) { movies -> loadVodNames(p, true, vodOk) { series -> then(live, movies, series) } }
+        }
+    }
+
+    /**
+     * Länder einmal auswählen – gilt für TV, Filme und Serien zusammen.
+     * Danach Übersicht mit Möglichkeit, einzelne Gruppen anzupassen.
+     * done(hiddenLive, hiddenMovies, hiddenSeries, Länder)
+     */
+    private fun pickCountriesAll(
+        title: String, live: List<String>, movies: List<String>, series: List<String>,
+        hLive: Set<String>, hMovies: Set<String>, hSeries: Set<String>,
+        done: (Set<String>, Set<String>, Set<String>, List<String>) -> Unit
+    ) {
+        val all = live + movies + series
+        if (all.isEmpty()) { Toast.makeText(this, "Keine Gruppen gefunden", Toast.LENGTH_LONG).show(); return }
+        val count = HashMap<String, IntArray>()   // Land → [TV, Filme, Serien]
+        fun add(l: List<String>, i: Int) = l.forEach { count.getOrPut(Countries.code(it)) { IntArray(3) }[i]++ }
+        add(live, 0); add(movies, 1); add(series, 2)
+        val codes = count.keys.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { -(count[it]!!.sum()) }))
+        fun visibleIn(l: List<String>, h: Set<String>, c: String) = l.any { Countries.code(it) == c && it !in h }
+        val nothingHidden = hLive.isEmpty() && hMovies.isEmpty() && hSeries.isEmpty()
+        val checked = BooleanArray(codes.size) { i ->
+            val c = codes[i]
+            if (nothingHidden) c != "XXX" else visibleIn(live, hLive, c) || visibleIn(movies, hMovies, c) || visibleIn(series, hSeries, c)
+        }
+        val labels = codes.map { c ->
+            val n = count[c]!!
+            val f = Countries.flagEmoji(c)
+            val name = if (c == "?") "Sonstige / ohne Land" else Countries.label(c)
+            "${if (f.isNotEmpty()) "$f " else ""}$name  ·  TV ${n[0]} · Filme ${n[1]} · Serien ${n[2]}"
+        }.toTypedArray()
+        Dialogs.multiChoice(this, "$title – welche Länder? (gilt für TV, Filme und Serien)", labels, checked) {
+            val keep = codes.filterIndexed { i, _ -> checked[i] }.toSet()
+            fun hide(l: List<String>) = l.filter { Countries.code(it) !in keep }.toSet()
+            overview(title, live, movies, series, hide(live), hide(movies), hide(series), keep.toList(),
+                again = { pickCountriesAll(title, live, movies, series, hLive, hMovies, hSeries, done) }, done = done)
+        }
+    }
+
+    /** Übersicht: welche Länder, wie viele Gruppen je Bereich – danach übernehmen oder einzeln anpassen */
+    private fun overview(
+        title: String, live: List<String>, movies: List<String>, series: List<String>,
+        hl: Set<String>, hm: Set<String>, hs: Set<String>, keep: List<String>,
+        again: () -> Unit, done: (Set<String>, Set<String>, Set<String>, List<String>) -> Unit
+    ) {
+        val names = keep.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { it })).joinToString("\n") { c ->
+            val f = Countries.flagEmoji(c)
+            "  ${if (f.isNotEmpty()) f else "•"}  ${if (c == "?") "Sonstige / ohne Land" else Countries.label(c)}"
+        }
+        fun line(n: String, l: List<String>, h: Set<String>) = if (l.isEmpty()) "" else "$n: ${l.size - h.count { it in l }} von ${l.size}\n"
+        val xxx = (live + movies + series).any { Countries.code(it) == "XXX" }
+        val msg = "Länder (${keep.size}):\n${names.ifBlank { "  keine" }}\n\n" +
+            line("📺 TV-Gruppen", live, hl) + line("🎬 Film-Kategorien", movies, hm) + line("📺 Serien-Kategorien", series, hs) +
+            (if (xxx) "🔞 Erwachsene: ${if ("XXX" in keep) "an" else "aus"}" else "")
+        AlertDialog.Builder(this)
+            .setTitle("✓ $title – Übersicht")
+            .setMessage(msg)
+            .setPositiveButton("Übernehmen") { _, _ -> done(hl, hm, hs, keep) }
+            .setNeutralButton("Länder ändern") { _, _ -> again() }
+            .setNegativeButton("Einzelne Gruppen …") { _, _ ->
+                fineTuneAll(live, movies, series, hl, hm, hs) { a, b, c ->
+                    overview(title, live, movies, series, a, b, c, keep, again, done)
+                }
+            }
+            .show()
+    }
+
+    /** einzelne Gruppen je Bereich abwählen (nur die sichtbaren werden gezeigt) */
+    private fun fineTuneAll(live: List<String>, movies: List<String>, series: List<String>,
+                            hl: Set<String>, hm: Set<String>, hs: Set<String>, then: (Set<String>, Set<String>, Set<String>) -> Unit) {
+        fun one(t: String, l: List<String>, h: Set<String>, next: (Set<String>) -> Unit) {
+            val vis = l.filter { it !in h }
+            if (vis.isEmpty()) { next(h); return }
+            val ck = BooleanArray(vis.size) { true }
+            Dialogs.multiChoice(this, "$t – einzelne Gruppen (Haken = sichtbar)", vis.map { Countries.pretty(it) }.toTypedArray(), ck) {
+                next(h + vis.filterIndexed { i, _ -> !ck[i] })
+            }
+        }
+        one("📺 TV", live, hl) { a -> one("🎬 Filme", movies, hm) { b -> one("📺 Serien", series, hs) { c -> then(a, b, c) } } }
     }
 
     private fun loadVodNames(p: Playlist, series: Boolean, ok: Boolean, then: (List<String>) -> Unit) {
