@@ -50,4 +50,23 @@ class ServerTest {
             assertEquals(backup, restored) // Umlaute/Mehrbyte-Zeichen vollständig angekommen
         } finally { s.stop() }
     }
+
+    @Test fun personForm() {
+        var got: Map<String, String>? = null
+        val s = PhoneSetupServer(onPlaylist = {}, onPerson = { got = it },
+            personData = { id -> if (id == "abc") mapOf("id" to "abc", "name" to "Paulo", "server" to "http://x.de") else null })
+        assertTrue(s.start())
+        try {
+            val get = URL("http://127.0.0.1:${s.port}/person?id=abc").openConnection() as HttpURLConnection
+            val page = get.inputStream.bufferedReader().readText()
+            assertTrue(page.contains("value=\"Paulo\""))
+            val post = URL("http://127.0.0.1:${s.port}/person").openConnection() as HttpURLConnection
+            post.requestMethod = "POST"; post.doOutput = true
+            post.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            post.outputStream.write("id=&name=Ana&server=http%3A%2F%2Fsrv.de&user=ana1&pass=x&code=pt7k3f92xa&note=".toByteArray())
+            assertTrue(post.inputStream.bufferedReader().readText().contains("Gespeichert"))
+            Thread.sleep(200)
+            assertEquals("Ana", got!!["name"]); assertEquals("ana1", got!!["user"])
+        } finally { s.stop() }
+    }
 }

@@ -18,7 +18,11 @@ class PhoneSetupServer(
     /** aktuelle Sicherung als JSON (für Download aufs Handy) */
     private val exportBackup: (() -> String)? = null,
     /** Sicherung empfangen (vom Handy oder einem anderen Fernseher) */
-    private val onRestore: ((json: String, from: String) -> Unit)? = null
+    private val onRestore: ((json: String, from: String) -> Unit)? = null,
+    /** Person für die Verwaltung vom Handy (Formularfelder) */
+    private val onPerson: ((Map<String, String>) -> Unit)? = null,
+    /** vorhandene Person zum Bearbeiten (id → Felder) */
+    private val personData: ((String) -> Map<String, String>?)? = null
 ) {
 
     private var server: ServerSocket? = null
@@ -96,6 +100,22 @@ class PhoneSetupServer(
                     return
                 }
 
+                if (path.startsWith("/person") && onPerson != null) {
+                    val html = if (method == "POST") {
+                        val f = parseForm(body)
+                        if (f["name"].isNullOrBlank() || (f["server"].isNullOrBlank())) page("Fehler", "<p class='err'>Name und Server/Link sind nötig.</p><a class='btn' href='/person'>Zurück</a>")
+                        else {
+                            onPerson.invoke(f)
+                            page("Gespeichert ✓", "<p class='ok'>„${esc(f["name"] ?: "")}“ ist in der Verwaltung gespeichert.</p><p>Schau auf den Fernseher.</p><a class='btn' href='/person'>Weitere Person eintragen</a>")
+                        }
+                    } else {
+                        val id = path.substringAfter("id=", "").substringBefore("&")
+                        val d = if (id.isNotBlank()) personData?.invoke(URLDecoder.decode(id, "UTF-8")) else null
+                        page("Person eintragen", personForm(d ?: emptyMap()))
+                    }
+                    send("text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8)); return
+                }
+
                 val html = if (method == "POST" && path.startsWith("/add")) {
                     val f = parseForm(body)
                     val type = if (f["type"] == "m3u") "m3u" else "xtream"
@@ -122,6 +142,24 @@ class PhoneSetupServer(
                 send("text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8))
             } catch (e: Exception) { }
         }
+    }
+
+    private fun esc(v: String) = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    /** Formular für die Verwaltung (Freunde & Familie) */
+    private fun personForm(d: Map<String, String>): String {
+        fun v(k: String) = esc(d[k] ?: "")
+        return """<p class="sub">${if (d.isEmpty()) "Neue Person für die Verwaltung" else "Person bearbeiten"} – wird auf dem Fernseher gespeichert</p>
+<form method="post" action="/person">
+<input type="hidden" name="id" value="${v("id")}">
+<div class="f"><label>Name *</label><input name="name" value="${v("name")}" placeholder="z. B. Paulo"></div>
+<div class="f"><label>Server-Adresse oder M3U-Link *</label><input name="server" value="${v("server")}" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://server.de:8080"></div>
+<div class="f"><label>Benutzername</label><input name="user" value="${v("user")}" autocapitalize="off" autocorrect="off"></div>
+<div class="f"><label>Passwort</label><input name="pass" value="${v("pass")}" autocapitalize="off" autocorrect="off"></div>
+<div class="f"><label>Gerätecode (optional)</label><input name="code" value="${v("code")}" autocapitalize="characters" autocorrect="off" placeholder="PT-XXXX-XXXX"></div>
+<div class="f"><label>Notiz (optional)</label><input name="note" value="${v("note")}" placeholder="z. B. Ablauf, Gerät"></div>
+<button type="submit">Auf dem Fernseher speichern</button>
+</form><p class="hint">Handy und Fernseher müssen im selben WLAN sein. Die Länder wählst du danach am Fernseher aus.</p>"""
     }
 
     private fun parseForm(s: String): Map<String, String> = s.split("&").mapNotNull {
@@ -158,6 +196,7 @@ button,.btn{display:block;width:100%;box-sizing:border-box;text-align:center;pad
 </form><h2 style="margin-top:34px;font-size:20px">Sicherung</h2>
 <p class="sub">Alle Playlists, Favoriten und Einstellungen auf dem Handy sichern – oder eine Sicherung auf diesen Fernseher laden.</p>
 <a class="btn" href="/backup" download="pintotv-sicherung.json">⬇ Sicherung aufs Handy laden</a>
+<a class="btn" href="/person" style="background:#222630;border:1px solid #3D7BFF">👥 Person für die Verwaltung eintragen</a>
 <div class="f" style="margin-top:18px"><label>Sicherung auf diesen Fernseher übertragen</label><input type="file" id="bf" accept=".json,application/json"></div>
 <button type="button" onclick="up()">⬆ Sicherung an Fernseher senden</button>
 <p id="st" class="hint"></p>

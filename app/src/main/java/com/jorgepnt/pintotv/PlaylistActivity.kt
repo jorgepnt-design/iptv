@@ -72,13 +72,58 @@ class PlaylistActivity : Activity() {
                 }
             },
             exportBackup = { store.exportJson() },
-            onRestore = { json, from -> runOnUiThread { confirmRestore(json, from) } }
+            onRestore = { json, from -> runOnUiThread { confirmRestore(json, from) } },
+            onPerson = { f -> runOnUiThread { personFromPhone(f) } },
+            personData = { id ->
+                people().firstOrNull { it.optString("id") == id }?.let { o ->
+                    mapOf("id" to id, "name" to o.optString("name"), "server" to o.optString("url").ifBlank { o.optString("server") },
+                        "user" to o.optString("user"), "pass" to o.optString("pass"), "code" to o.optString("code"), "note" to o.optString("note"))
+                }
+            }
         )
         if (ip == null || !srv.start()) { pane.visibility = View.GONE; return }
         phoneServer = srv
         val url = if (srv.port == 80) "http://$ip" else "http://$ip:${srv.port}"
+        phoneBase = url
         findViewById<TextView>(R.id.phoneUrl).text = url.removePrefix("http://")
         findViewById<ImageView>(R.id.qr).setImageBitmap(qr(url, 400))
+    }
+
+    private var phoneBase: String? = null
+    private var phoneDialog: AlertDialog? = null
+
+    /** Person kam vom Handy: speichern und anzeigen */
+    private fun personFromPhone(f: Map<String, String>) {
+        val old = f["id"]?.takeIf { it.isNotBlank() }?.let { id -> people().firstOrNull { it.optString("id") == id } }
+        val srv = f["server"]?.trim() ?: ""
+        val isM3u = srv.contains("get.php", true) || srv.contains(".m3u", true) || srv.contains("type=m3u", true)
+        val o = (old?.let { JSONObject(it.toString()) } ?: JSONObject().put("id", java.util.UUID.randomUUID().toString()))
+            .put("name", f["name"]?.trim() ?: "").put("note", f["note"]?.trim() ?: "")
+            .put("code", f["code"]?.let { Remote.normalize(it) } ?: "")
+        if (isM3u) o.put("url", srv).put("server", "").put("user", "").put("pass", "")
+        else o.put("url", "").put("server", srv).put("user", f["user"]?.trim() ?: "").put("pass", f["pass"]?.trim() ?: "")
+        savePerson(o)
+        phoneDialog?.dismiss(); phoneDialog = null
+        Toast.makeText(this, "📱 „${o.optString("name")}“ vom Handy gespeichert", Toast.LENGTH_LONG).show()
+        personMenu(o)
+    }
+
+    /** QR-Code fürs iPhone: Person dort eintragen */
+    private fun personByPhone(old: JSONObject?) {
+        val base = phoneBase ?: run { Toast.makeText(this, "Handy-Verbindung nicht verfügbar (WLAN prüfen)", Toast.LENGTH_LONG).show(); return }
+        val url = base + "/person" + (old?.let { "?id=" + it.optString("id") } ?: "")
+        val dp = resources.displayMetrics.density
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding((20 * dp).toInt(), (10 * dp).toInt(), (20 * dp).toInt(), 0)
+            addView(ImageView(this@PlaylistActivity).apply { setImageBitmap(qr(url, 360)) }, LinearLayout.LayoutParams(360, 360))
+            addView(TextView(this@PlaylistActivity).apply {
+                text = "Mit der iPhone-Kamera scannen, Daten eintippen und „Auf dem Fernseher speichern“ drücken.\n\nOder im Browser öffnen:\n${url.removePrefix("http://")}"
+                setTextColor(Color.parseColor("#B8C0CE")); textSize = 15f; setPadding(0, (12 * dp).toInt(), 0, 0)
+            })
+        }
+        phoneDialog = AlertDialog.Builder(this).setTitle("📱 ${if (old == null) "Neue Person" else old.optString("name")} – mit dem iPhone eintragen")
+            .setView(box).setNegativeButton("Schließen") { _, _ -> if (old != null) personMenu(old) else showPeople() }.show()
     }
 
     private fun qr(text: String, size: Int): Bitmap {
@@ -188,13 +233,13 @@ class PlaylistActivity : Activity() {
 
     private fun showPeople() {
         val l = people()
-        val items = listOf("➕ Neue Person anlegen") + l.map { p ->
+        val items = listOf("📱 Neue Person mit dem iPhone eintragen", "➕ Neue Person am Fernseher anlegen") + l.map { p ->
             val sel = p.optString("sum").ifBlank { "alles" }
             "👤 ${p.optString("name")}   ·   $sel"
         }
         AlertDialog.Builder(this)
             .setTitle("👥 Verwaltung – ${l.size} ${if (l.size == 1) "Person" else "Personen"}")
-            .setItems(items.toTypedArray()) { _, w -> if (w == 0) editPerson(null) else personMenu(l[w - 1]) }
+            .setItems(items.toTypedArray()) { _, w -> when (w) { 0 -> personByPhone(null); 1 -> editPerson(null); else -> personMenu(l[w - 2]) } }
             .setNegativeButton("Schließen", null)
             .show()
     }
@@ -211,7 +256,8 @@ class PlaylistActivity : Activity() {
         opts.add("📤 Einrichtung senden" + (if (code.isNotBlank()) "  (an $code)" else "") to { sendPerson(p) })
         opts.add("🌍 Länder / Gruppen auswählen  ·  ${p.optString("sum").ifBlank { "alles" }}" to { pickPersonGroups(p) })
         opts.add("ℹ️ Konto prüfen (Ablauf, Verbindungen)" to { checkAccount(p) })
-        opts.add("✏️ Zugangsdaten bearbeiten" to { editPerson(p) })
+        opts.add("📱 Mit dem iPhone bearbeiten" to { personByPhone(p) })
+        opts.add("✏️ Zugangsdaten am Fernseher bearbeiten" to { editPerson(p) })
         opts.add("📋 Zugangsdaten anzeigen" to {
             AlertDialog.Builder(this).setTitle(p.optString("name"))
                 .setMessage(if (p.optString("url").isNotBlank()) "M3U:\n${p.optString("url")}" else
