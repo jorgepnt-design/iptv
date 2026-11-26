@@ -1,6 +1,6 @@
 {
-  "versionCode": 71,
-  "versionName": "2.59",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=71",
-  "notes": "• Menü → 🔊 Ton-Synchronisierung: Ton früher/später schieben (wirkt sofort), für einen Sender oder alle merken\n• Option „Stereo erzwingen“ gegen Versatz mit Soundbar/AV-Receiver"
+  "versionCode": 72,
+  "versionName": "2.60",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=72",
+  "notes": "• Ton-Synchronisierung als kleines Feld unten rechts – das Bild bleibt sichtbar und wird nicht abgedunkelt"
 }

@@ -618,53 +618,68 @@ class PlayerActivity : Activity() {
 
     // ---------- Ton-Synchronisierung ----------
 
+    /** kleines Feld am rechten Rand – das Bild bleibt sichtbar */
     private fun audioSyncDialog() {
         val c = current ?: run { toast("Zuerst einen Sender abspielen"); return }
         var ms = AudioSync.offsetUs / 1000
+        var saved = false
         val pcm = store.getString("forcePcm", "0") == "1"
+        val dp = resources.displayMetrics.density
         fun label() = when {
             ms == 0L -> "Kein Versatz"
             ms > 0 -> "Ton $ms ms später"
             else -> "Ton ${-ms} ms früher"
         }
-        val info = TextView(this).apply {
-            textSize = 26f; setTextColor(android.graphics.Color.WHITE); gravity = android.view.Gravity.CENTER
-            setPadding(30, 30, 30, 10); text = label()
+        fun small(t: String, size: Float = 13f, color: Int = R.color.text2) = TextView(this).apply {
+            text = t; textSize = size; setTextColor(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, color))
         }
-        val hint = TextView(this).apply {
-            textSize = 14f; setTextColor(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, R.color.text2))
-            gravity = android.view.Gravity.CENTER; setPadding(30, 0, 30, 20)
-            text = "Kommt die Stimme vor den Lippen → ◀▶ „später“.\nKommt sie danach → „früher“. Wirkt sofort."
+        fun btn(t: String, click: () -> Unit) = TextView(this).apply {
+            text = t; textSize = 14f; gravity = android.view.Gravity.CENTER
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@PlayerActivity, R.color.text))
+            background = androidx.core.content.ContextCompat.getDrawable(this@PlayerActivity, R.drawable.button_bg)
+            isFocusable = true; isClickable = true
+            setPadding((12 * dp).toInt(), (8 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
+            setOnClickListener { click() }
         }
-        fun set(v: Long) {
-            ms = v.coerceIn(-3000, 3000)
-            AudioSync.offsetUs = ms * 1000
-            info.text = label()
+        val dlg = android.app.Dialog(this)
+        val info = small(label(), 20f, R.color.text).apply { setTypeface(null, android.graphics.Typeface.BOLD) }
+        fun set(v: Long) { ms = v.coerceIn(-3000, 3000); AudioSync.offsetUs = ms * 1000; info.text = label() }
+        fun row(vararg v: View) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            v.forEach { addView(it, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins((3 * dp).toInt(), (3 * dp).toInt(), (3 * dp).toInt(), (3 * dp).toInt()) }) }
         }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER }
-        listOf(-100L to "◀ früher", 100L to "später ▶").forEach { (d, t) ->
-            row.addView(android.widget.Button(this).apply {
-                text = t; setOnClickListener { set(ms + d) }
-            })
-        }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(info); addView(hint); addView(row) }
-        val d = AlertDialog.Builder(this)
-            .setTitle("🔊 Ton-Synchronisierung · ${c.name}")
-            .setView(box)
-            .setPositiveButton("Für diesen Sender merken") { _, _ ->
-                store.putString(audioKey(c), ms.toString()); toast("Gespeichert für ${c.name}: ${label()}")
-            }
-            .setNeutralButton(if (pcm) "Tonformat: Stereo ✓" else "Tonformat: Original") { _, _ ->
+        val earlier = btn("◀ früher") { set(ms - 100) }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = androidx.core.content.ContextCompat.getDrawable(this@PlayerActivity, R.drawable.card_bg)
+            setPadding((14 * dp).toInt(), (12 * dp).toInt(), (14 * dp).toInt(), (12 * dp).toInt())
+            addView(small("🔊 Ton · ${c.name}", 13f))
+            addView(info)
+            addView(small("Stimme vor den Lippen → später, danach → früher", 11f, R.color.text3))
+            addView(row(earlier, btn("später ▶") { set(ms + 100) }))
+            addView(row(
+                btn("Merken") { store.putString(audioKey(c), ms.toString()); saved = true; toast("Gespeichert für ${c.name}"); dlg.dismiss() },
+                btn("Alle Sender") { store.putString("adelay_all", ms.toString()); saved = true; toast("Für alle Sender gespeichert"); dlg.dismiss() }
+            ))
+            addView(row(btn(if (pcm) "Tonformat: Stereo ✓" else "Tonformat: Original") {
                 store.putString("forcePcm", if (pcm) "0" else "1")
-                toast(if (pcm) "Original-Tonformat (Dolby wird durchgereicht) – wirkt nach Neustart der App" else "Stereo erzwungen – hilft oft bei Versatz mit Soundbar. Wirkt nach Neustart der App")
-            }
-            .setNegativeButton("Für alle Sender") { _, _ ->
-                store.putString("adelay_all", ms.toString()); toast("Für alle Sender: ${label()}")
-            }
-            .create()
-        d.setOnDismissListener { applyAudioDelay(c).also { /* nicht gespeichert → wieder gespeicherten Wert */ } }
-        d.show()
-        row.getChildAt(1)?.requestFocus()
+                toast(if (pcm) "Original-Tonformat – wirkt nach Neustart der App" else "Stereo erzwungen – wirkt nach Neustart der App")
+                dlg.dismiss()
+            }))
+        }
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dlg.setContentView(box)
+        dlg.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            setDimAmount(0f)
+            setGravity(android.view.Gravity.END or android.view.Gravity.BOTTOM)
+            attributes = attributes.apply { x = (24 * dp).toInt(); y = (24 * dp).toInt() }
+            setLayout((300 * dp).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+        // nicht gespeichert → gespeicherten Wert wiederherstellen
+        dlg.setOnDismissListener { if (!saved) applyAudioDelay(c) }
+        dlg.show()
+        earlier.requestFocus()
     }
 
     // ---------- Timeshift ----------
