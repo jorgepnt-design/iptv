@@ -1,6 +1,6 @@
 {
-  "versionCode": 77,
-  "versionName": "2.65",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=77",
-  "notes": "• Länder nur einmal auswählen – gilt automatisch für TV, Filme und Serien\n• Danach Übersicht: welche Länder, wie viele Gruppen je Bereich, Erwachsene an/aus\n• Verwaltung: „👁 Übersicht der Länder“ pro Person"
+  "versionCode": 78,
+  "versionName": "2.66",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=78",
+  "notes": "• Länderauswahl: nur die zuletzt gewählten Länder sind vorausgewählt\n• Film-/Serien-Kategorien ohne Land (z. B. „Action“) bleiben sichtbar"
 }

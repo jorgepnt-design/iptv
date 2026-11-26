@@ -338,7 +338,8 @@ class PlaylistActivity : Activity() {
         val h = p.optJSONObject("h") ?: JSONObject()
         loadAllNames(pl, pl.type == "xtream") { live, movies, series ->
             if (live.isEmpty() && movies.isEmpty() && series.isEmpty()) { personMenu(p); return@loadAllNames }
-            pickCountriesAll(p.optString("name"), live, movies, series, set2(h, "live"), set2(h, "movies"), set2(h, "series")) { a, b, c, keep ->
+            val saved = p.optJSONArray("countries")?.let { a -> (0 until a.length()).map { a.getString(it) } }
+            pickCountriesAll(p.optString("name"), live, movies, series, set2(h, "live"), set2(h, "movies"), set2(h, "series"), saved) { a, b, c, keep ->
                 h.put("live", JSONArray(a.toList())).put("movies", JSONArray(b.toList())).put("series", JSONArray(c.toList()))
                 p.put("h", h)
                 p.put("countries", JSONArray(keep))
@@ -599,6 +600,7 @@ class PlaylistActivity : Activity() {
     private fun pickCountriesAll(
         title: String, live: List<String>, movies: List<String>, series: List<String>,
         hLive: Set<String>, hMovies: Set<String>, hSeries: Set<String>,
+        saved: List<String>? = null,
         done: (Set<String>, Set<String>, Set<String>, List<String>) -> Unit
     ) {
         val all = live + movies + series
@@ -608,10 +610,14 @@ class PlaylistActivity : Activity() {
         add(live, 0); add(movies, 1); add(series, 2)
         val codes = count.keys.sortedWith(compareBy({ it == "?" }, { it == "XXX" }, { -(count[it]!!.sum()) }))
         fun visibleIn(l: List<String>, h: Set<String>, c: String) = l.any { Countries.code(it) == c && it !in h }
-        val nothingHidden = hLive.isEmpty() && hMovies.isEmpty() && hSeries.isEmpty()
+        // Vorauswahl: genau die zuletzt gewählten Länder; sonst aus der TV-Auswahl; sonst nichts angehakt
         val checked = BooleanArray(codes.size) { i ->
             val c = codes[i]
-            if (nothingHidden) c != "XXX" else visibleIn(live, hLive, c) || visibleIn(movies, hMovies, c) || visibleIn(series, hSeries, c)
+            when {
+                saved != null -> c in saved
+                hLive.isNotEmpty() && live.isNotEmpty() -> visibleIn(live, hLive, c)
+                else -> false
+            }
         }
         val labels = codes.map { c ->
             val n = count[c]!!
@@ -622,8 +628,10 @@ class PlaylistActivity : Activity() {
         Dialogs.multiChoice(this, "$title – welche Länder? (gilt für TV, Filme und Serien)", labels, checked) {
             val keep = codes.filterIndexed { i, _ -> checked[i] }.toSet()
             fun hide(l: List<String>) = l.filter { Countries.code(it) !in keep }.toSet()
-            overview(title, live, movies, series, hide(live), hide(movies), hide(series), keep.toList(),
-                again = { pickCountriesAll(title, live, movies, series, hLive, hMovies, hSeries, done) }, done = done)
+            // Filme/Serien ohne Land im Namen (z. B. „Action“, „Komödie“) bleiben sichtbar – sonst wäre oft alles weg
+            fun hideVod(l: List<String>) = l.filter { val c = Countries.code(it); c != "?" && c !in keep }.toSet()
+            overview(title, live, movies, series, hide(live), hideVod(movies), hideVod(series), keep.toList(),
+                again = { pickCountriesAll(title, live, movies, series, hLive, hMovies, hSeries, keep.toList(), done) }, done = done)
         }
     }
 
@@ -639,9 +647,11 @@ class PlaylistActivity : Activity() {
         }
         fun line(n: String, l: List<String>, h: Set<String>) = if (l.isEmpty()) "" else "$n: ${l.size - h.count { it in l }} von ${l.size}\n"
         val xxx = (live + movies + series).any { Countries.code(it) == "XXX" }
+        val vodNoCountry = (movies + series).count { Countries.code(it) == "?" }
         val msg = "Länder (${keep.size}):\n${names.ifBlank { "  keine" }}\n\n" +
             line("📺 TV-Gruppen", live, hl) + line("🎬 Film-Kategorien", movies, hm) + line("📺 Serien-Kategorien", series, hs) +
-            (if (xxx) "🔞 Erwachsene: ${if ("XXX" in keep) "an" else "aus"}" else "")
+            (if (xxx) "🔞 Erwachsene: ${if ("XXX" in keep) "an" else "aus"}\n" else "") +
+            (if (vodNoCountry > 0) "\nFilm-/Serien-Kategorien ohne Land (z. B. „Action“) bleiben sichtbar – über „Einzelne Gruppen“ abwählbar." else "")
         AlertDialog.Builder(this)
             .setTitle("✓ $title – Übersicht")
             .setMessage(msg)
