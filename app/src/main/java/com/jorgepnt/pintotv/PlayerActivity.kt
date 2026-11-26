@@ -155,7 +155,7 @@ class PlayerActivity : Activity() {
                     try {
                         store.importJson(json)
                         filesDir.listFiles()?.filter { it.name.startsWith("ch_") || it.name.startsWith("epg_") }?.forEach { it.delete() }
-                        Vod.clearCache()
+                        Vod.clearCache(this@PlayerActivity)
                         toast("Fern-Einrichtung übernommen – wird geladen")
                         load(false)
                     } catch (e: Exception) { toast("Einrichtung fehlerhaft: ${e.message}") }
@@ -313,7 +313,7 @@ class PlayerActivity : Activity() {
 
     private fun load(force: Boolean) {
         val p = store.active() ?: return
-        if (force) Vod.clearCache()
+        if (force) Vod.clearCache(this)
         playlist = p
         loading = true
         hideStatus()

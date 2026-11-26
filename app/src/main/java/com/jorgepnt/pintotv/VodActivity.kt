@@ -198,7 +198,9 @@ class VodActivity : Activity() {
         val hiddenIds = catalog.categories.filter { it.name in hidden }.map { it.id }.toSet()
         visibleItems = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
         byCat = visibleItems.groupBy { it.categoryId }
-        resumeCache = if (series) emptyList() else catalog.items.filter { it.url != null && store.resumePos(it.url) > 0 }
+        resumeCache = if (series) emptyList() else store.resumeHashes().let { hs ->
+            if (hs.isEmpty()) emptyList() else catalog.items.filter { it.url != null && it.url.hashCode() in hs }
+        }
         // „Zuletzt hinzugefügt“: Datum vom Anbieter, sonst die Nummer (neuere Einträge haben höhere Nummern)
         val hasDate = visibleItems.any { it.added > 0 }
         newCache = visibleItems.sortedByDescending { if (hasDate) it.added else (it.id.toLongOrNull() ?: 0L) }.take(200)

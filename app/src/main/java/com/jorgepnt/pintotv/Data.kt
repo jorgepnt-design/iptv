@@ -239,6 +239,10 @@ class Store(ctx: Context) {
 
     /** Wiedergabeposition für Filme/Folgen */
     fun resumePos(url: String): Long = sp.getLong("pos_" + url.hashCode(), 0)
+    /** alle Filme mit gemerkter Position (nur die Kennungen – schnell, ohne jeden Film einzeln abzufragen) */
+    fun resumeHashes(): Set<Int> = sp.all.keys.asSequence().filter { it.startsWith("pos_") }
+        .mapNotNull { it.removePrefix("pos_").toIntOrNull() }.toHashSet()
+
     fun resumeDur(url: String): Long = sp.getLong("dur_" + url.hashCode(), 0)
     fun setResumePos(url: String, ms: Long, dur: Long) {
         val e = sp.edit()

@@ -1,6 +1,6 @@
 {
-  "versionCode": 69,
-  "versionName": "2.57",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=69",
-  "notes": "• Filme/Serien deutlich schneller und stabiler (kein Hängen/Absturz mehr bei vielen Filmen)\n• „🆕 Zuletzt hinzugefügt“ jetzt bei jedem Anbieter\n• Jahr-Filter „ab 2025“ usw.: dieses Jahr und alle neueren; leere Kategorien werden beim Filtern ausgeblendet"
+  "versionCode": 70,
+  "versionName": "2.58",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=70",
+  "notes": "• Filme/Serien werden 12 Std. gespeichert – schneller und weniger Abrufe beim Anbieter (verhindert Sperren wie HTTP 456)\n• Bei Ablehnung automatisch neuer Versuch mit Pause\n• „Weiterschauen“ ohne Hängen"
 }

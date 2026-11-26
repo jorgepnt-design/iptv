@@ -599,7 +599,7 @@ class PlaylistActivity : Activity() {
         try {
             store.importJson(json)
             filesDir.listFiles()?.filter { it.name.startsWith("ch_") || it.name.startsWith("epg_") }?.forEach { it.delete() }
-            Vod.clearCache()
+            Vod.clearCache(this)
             Toast.makeText(this, "Übernommen – Playlist wird geladen", Toast.LENGTH_LONG).show()
             deletedActive = true
             finish()

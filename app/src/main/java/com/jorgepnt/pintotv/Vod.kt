@@ -3,6 +3,7 @@ package com.jorgepnt.pintotv
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -64,13 +65,77 @@ object Vod {
     suspend fun catalog(ctx: Context, p0: Playlist, series: Boolean, progress: Progress?): VodCatalog = withContext(Dispatchers.IO) {
         val key = p0.id + if (series) ":s" else ":m"
         cache[key]?.let { return@withContext it }
-        val result = if (p0.type == "xtream") withUa(p0.id, ctx) { xtreamCatalog(Xtream.normalize(p0), series, progress) }
-        else m3uCatalog(series)
+        val result = if (p0.type == "xtream") {
+            // gespeicherter Katalog (12 Std.) – schont den Anbieter, der sonst bei vielen Abrufen sperrt (z. B. HTTP 456)
+            val f = File(ctx.filesDir, "vod_${p0.id}_${if (series) "s" else "m"}.json")
+            readDisk(f) ?: run {
+                val fresh = fetchWithRetry(ctx, p0, series, progress)
+                try { writeDisk(f, fresh) } catch (_: Exception) { }
+                fresh
+            }
+        } else m3uCatalog(series)
         cache[key] = result
         result
     }
 
-    fun clearCache() = cache.clear()
+    fun clearCache(ctx: Context? = null) {
+        cache.clear()
+        ctx?.filesDir?.listFiles()?.filter { it.name.startsWith("vod_") }?.forEach { it.delete() }
+    }
+
+    private const val DISK_AGE = 12 * 3600_000L
+
+    /** bei Ablehnung: kurz warten und mit anderer Player-Kennung erneut versuchen */
+    private fun fetchWithRetry(ctx: Context, p0: Playlist, series: Boolean, progress: Progress?): VodCatalog {
+        val store = Store(ctx)
+        val first = store.userAgent(p0.id) ?: Http.UA
+        val tries = (listOf(first) + Http.CANDIDATES).distinct().take(4)
+        var last: Exception? = null
+        for ((i, ua) in tries.withIndex()) {
+            if (i > 0) {
+                progress?.invoke("Anbieter lehnt ab – neuer Versuch in ${i * 3} s …", -1)
+                Thread.sleep(i * 3000L)
+            }
+            Http.threadUA.set(ua)
+            try {
+                return xtreamCatalog(Xtream.normalize(p0), series, progress)
+            } catch (e: HttpStatusException) {
+                last = e
+            } catch (e: java.net.SocketTimeoutException) {
+                last = e
+            } finally { Http.threadUA.set(null) }
+        }
+        val e = last
+        if (e is HttpStatusException && (e.code == 456 || e.code == 429 || e.code == 403 || e.code == 509))
+            throw IOException("Der Anbieter sperrt gerade die Abfrage (HTTP ${e.code}) – meist wegen zu vieler Abrufe in kurzer Zeit. Bitte ein paar Minuten warten und dann erneut öffnen.")
+        throw e ?: IOException("Unbekannter Fehler")
+    }
+
+    private fun readDisk(f: File): VodCatalog? {
+        if (!f.exists() || System.currentTimeMillis() - f.lastModified() > DISK_AGE) return null
+        return try {
+            val o = JSONObject(f.readText())
+            val ca = o.getJSONArray("c"); val ia = o.getJSONArray("i")
+            val cats = (0 until ca.length()).map { val c = ca.getJSONArray(it); VodCategory(c.getString(0), c.getString(1)) }
+            val items = ArrayList<VodItem>(ia.length())
+            for (k in 0 until ia.length()) {
+                val a = ia.getJSONArray(k)
+                items.add(VodItem(a.getString(0), a.getString(1), a.optString(2).ifBlank { null }, a.getString(3), a.optString(4),
+                    a.optString(5).ifBlank { null }, a.optBoolean(6), a.optString(7), a.optString(8), null, a.optLong(9)))
+            }
+            VodCatalog(cats, items)
+        } catch (e: Exception) { null }
+    }
+
+    private fun writeDisk(f: File, c: VodCatalog) {
+        val ca = JSONArray(); c.categories.forEach { ca.put(JSONArray().put(it.id).put(it.name)) }
+        val ia = JSONArray()
+        c.items.forEach { v -> ia.put(JSONArray().put(v.id).put(v.name).put(v.poster ?: "").put(v.categoryId).put(v.rating)
+            .put(v.url ?: "").put(v.isSeries).put(v.plot).put(v.year).put(v.added)) }
+        val tmp = File(f.path + ".tmp")
+        tmp.writeText(JSONObject().put("c", ca).put("i", ia).toString())
+        tmp.renameTo(f)
+    }
 
     private fun xtreamCatalog(p: Playlist, series: Boolean, progress: Progress?): VodCatalog {
         val b = Xtream.base(p.server)
