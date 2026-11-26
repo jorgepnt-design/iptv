@@ -1,6 +1,6 @@
 {
-  "versionCode": 78,
-  "versionName": "2.66",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=78",
-  "notes": "• Länderauswahl: nur die zuletzt gewählten Länder sind vorausgewählt\n• Film-/Serien-Kategorien ohne Land (z. B. „Action“) bleiben sichtbar"
+  "versionCode": 79,
+  "versionName": "2.67",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=79",
+  "notes": "• Favoriten nach Ländern sortiert (z. B. erst Deutschland, dann Portugal) – Reihenfolge der Länder wie unter „Gruppen / Länder“\n• Abschaltbar: Favoritenlisten → Liste → „🌍 Nach Ländern sortieren“"
 }

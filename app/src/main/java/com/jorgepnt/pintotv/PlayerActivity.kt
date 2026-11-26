@@ -431,15 +431,30 @@ class PlayerActivity : Activity() {
 
     private fun channelsOf(g: String): List<Channel> {
         val l = channelsOfRaw(g)
-        return when {
+        val sorted = when {
             g == G_RECENT -> l
             g in favGroups.keys && store.favLists().firstOrNull { it.name == favGroups[g] }?.manual == true -> l // eigene Reihenfolge
             store.sortByName -> l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') }
             else -> l.sortedBy { it.number } // nach Nummer (berücksichtigt eigene Nummern)
         }
+        // Favoriten nach Ländern: Reihenfolge wie bei „Gruppen / Länder“, innerhalb eines Landes bleibt die Ordnung
+        if (g in favGroups.keys && store.getString("favByCountry", "1") == "1") {
+            val rank = countryRank()
+            return sorted.sortedBy { rank[Countries.code(it.group)] ?: Int.MAX_VALUE }
+        }
+        return sorted
     }
 
     /** Gruppen in eigener Reihenfolge: zuerst manuell sortierte, dann nach Länder-Vorrang, dann Anbieter-Reihenfolge */
+    /** Land → Platz, so wie die Länder in der Gruppenliste aufeinanderfolgen */
+    private fun countryRank(): Map<String, Int> {
+        val pid = playlist?.id ?: return emptyMap()
+        val m = LinkedHashMap<String, Int>()
+        orderedGroups(pid).forEach { g -> val c = Countries.code(g); if (c !in m && c != "?" && c != "XXX") m[c] = m.size }
+        m.putIfAbsent("?", m.size); m.putIfAbsent("XXX", m.size)
+        return m
+    }
+
     private fun orderedGroups(pid: String): List<String> {
         val manual = store.groupOrder(pid).withIndex().associate { it.value to it.index }
         val countries = store.countryOrder(pid).withIndex().associate { it.value to it.index }
@@ -1105,7 +1120,8 @@ class PlayerActivity : Activity() {
                 val fl = lists[w]
                 AlertDialog.Builder(this)
                     .setTitle("★ ${fl.name}")
-                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren", "⇅ Sender ordnen", "↺ Reihenfolge zurücksetzen (nach Nummer)")) { _, a ->
+                    .setItems(arrayOf("Umbenennen", "Nach oben verschieben", "Leeren", "Löschen", "☑ Sender aus aktueller Gruppe markieren", "⇅ Sender ordnen", "↺ Reihenfolge zurücksetzen (nach Nummer)",
+                        if (store.getString("favByCountry", "1") == "1") "🌍 Nach Ländern sortieren: AN (alle Listen)" else "🌍 Nach Ländern sortieren: AUS (alle Listen)")) { _, a ->
                         val all = store.favLists()
                         val i = all.indexOfFirst { it.name == fl.name }
                         if (i < 0) return@setItems
@@ -1131,6 +1147,12 @@ class PlayerActivity : Activity() {
                                 ui.postDelayed({ startMove(channelAdapter.items.firstOrNull() ?: first) }, 300)
                             }
                             6 -> { all[i].manual = false; store.saveFavLists(all); afterFavChange(null); toast("Wieder nach Nummer sortiert") }
+                            7 -> {
+                                val on = store.getString("favByCountry", "1") != "1"
+                                store.putString("favByCountry", if (on) "1" else "0")
+                                afterFavChange(null)
+                                toast(if (on) "Favoriten nach Ländern sortiert" else "Favoriten ohne Länder-Sortierung")
+                            }
                             2 -> { all[i].keys.clear(); store.saveFavLists(all); afterFavChange(null); toast("„${fl.name}“ geleert") }
                             3 -> {
                                 if (all.size == 1) { toast("Die letzte Liste kann nicht gelöscht werden – du kannst sie leeren"); return@setItems }
