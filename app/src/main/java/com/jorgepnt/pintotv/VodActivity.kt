@@ -186,59 +186,67 @@ class VodActivity : Activity() {
         }
     }
 
+    /** Kategorie-Id → Einträge (einmal pro Aufbau, statt bei jeder Kategorie alles zu durchsuchen) */
+    private var byCat: Map<String, List<VodItem>> = emptyMap()
+    private var resumeCache: List<VodItem> = emptyList()
+    private var newCache: List<VodItem> = emptyList()
+    private val sortedCache = HashMap<String, List<VodItem>>()
+
     private fun buildCats() {
         store.applyAllowedCountries(hiddenKey, catalog.categories.map { it.name })
         hidden = store.hiddenGroups(hiddenKey)
         val hiddenIds = catalog.categories.filter { it.name in hidden }.map { it.id }.toSet()
         visibleItems = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
-        val keys = ArrayList<String>(); val labels = ArrayList<String>()
-        if (resumeItems().isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen") }
-        if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis") }
-        if (newItems().isNotEmpty()) { keys.add("#new"); labels.add("🆕 Zuletzt hinzugefügt") }
-        keys.add(""); labels.add("Alle")
-        catalog.categories.filter { it.name !in hidden }.forEach { keys.add(it.id); labels.add(it.name) }
+        byCat = visibleItems.groupBy { it.categoryId }
+        resumeCache = if (series) emptyList() else catalog.items.filter { it.url != null && store.resumePos(it.url) > 0 }
+        // „Zuletzt hinzugefügt“: Datum vom Anbieter, sonst die Nummer (neuere Einträge haben höhere Nummern)
+        val hasDate = visibleItems.any { it.added > 0 }
+        newCache = visibleItems.sortedByDescending { if (hasDate) it.added else (it.id.toLongOrNull() ?: 0L) }.take(200)
+        sortedCache.clear()
+        val filtering = yearFrom != null || yearBefore != null || minRating > 0
+        val counts: Map<String, Int> = if (filtering) visibleItems.filter { passes(it) }.groupingBy { it.categoryId }.eachCount()
+            else byCat.mapValues { it.value.size }
+        val keys = ArrayList<String>(); val labels = ArrayList<String>(); val nums = ArrayList<String>()
+        if (resumeCache.isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen"); nums.add(resumeCache.size.toString()) }
+        if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis"); nums.add(searchResults.size.toString()) }
+        if (newCache.isNotEmpty()) { keys.add("#new"); labels.add("🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()) }
+        keys.add(""); labels.add("Alle"); nums.add((if (filtering) counts.values.sum() else visibleItems.size).toString())
+        catalog.categories.filter { it.name !in hidden }.forEach { c ->
+            val n = counts[c.id] ?: 0
+            if (filtering && n == 0) return@forEach   // beim Filtern leere Kategorien ausblenden
+            keys.add(c.id); labels.add(c.name); nums.add(n.toString())
+        }
         catKeys = keys; catLabels = labels
         catAdapter.items = keys.indices.map { i ->
             val k = keys[i]
-            TextItem(if (k.isEmpty() || k.startsWith("#")) labels[i] else Countries.pretty(labels[i]), itemsOf(k).size.toString())
+            TextItem(if (k.isEmpty() || k.startsWith("#")) labels[i] else Countries.pretty(labels[i]), nums[i])
         }
     }
 
-    /** die 200 zuletzt beim Anbieter hinzugefügten (nur sichtbare Kategorien) */
-    private var newCache: Pair<List<VodItem>, List<VodItem>>? = null
-    private fun newItems(): List<VodItem> {
-        newCache?.let { if (it.first === visibleItems) return it.second }
-        val r = visibleItems.filter { it.added > 0 }.sortedByDescending { it.added }.take(200)
-        newCache = visibleItems to r
-        return r
-    }
-
-    private fun resumeItems(): List<VodItem> =
-        if (series) emptyList() else catalog.items.filter { it.url != null && store.resumePos(it.url) > 0 }
+    private fun resumeItems(): List<VodItem> = resumeCache
 
     private fun itemsOf(cat: String): List<VodItem> {
-        val l = when (cat) {
-            "" -> visibleItems
-            "#resume" -> resumeItems()
-            "#new" -> newItems()
-            "#search" -> searchResults
-            else -> catalog.items.filter { it.categoryId == cat }
+        sortedCache[cat]?.let { return it }
+        val r = when (cat) {
+            "#resume" -> resumeCache
+            "#new" -> newCache
+            "#search" -> applySortFilter(searchResults)
+            "" -> applySortFilter(visibleItems)
+            else -> applySortFilter(byCat[cat] ?: emptyList())
         }
-        if (cat == "#resume") return l
-        if (cat == "#new") return l // schon nach Datum sortiert
-        return applySortFilter(l)
+        sortedCache[cat] = r
+        return r
     }
 
     // ---------- Sortieren & Filtern ----------
 
     private var sortMode = "std"          // std, new, year, rating, name
-    private var yearFilter: IntRange? = null
+    private var yearFrom: Int? = null      // „ab Jahr“: dieses Jahr und neuer
+    private var yearBefore: Int? = null    // „vor Jahr“
     private var minRating = 0.0
 
     private fun applySortFilter(src: List<VodItem>): List<VodItem> {
-        var l = src
-        yearFilter?.let { r -> l = l.filter { it.yearNum != null && it.yearNum!! in r } }
-        if (minRating > 0) l = l.filter { it.ratingNum >= minRating }
+        val l = if (yearFrom != null || yearBefore != null || minRating > 0) src.filter { passes(it) } else src
         return when (sortMode) {
             "new" -> l.sortedByDescending { it.added }
             "year" -> l.sortedWith(compareByDescending<VodItem> { it.yearNum ?: 0 }.thenByDescending { it.added })
@@ -248,6 +256,15 @@ class VodActivity : Activity() {
         }
     }
 
+    private fun passes(it: VodItem): Boolean {
+        yearFrom?.let { y -> if ((it.yearNum ?: 0) < y) return false }
+        yearBefore?.let { y -> val n = it.yearNum ?: return false; if (n >= y) return false }
+        if (minRating > 0 && it.ratingNum < minRating) return false
+        return true
+    }
+
+    private fun yearLabel() = yearFrom?.let { "ab $it" } ?: yearBefore?.let { "vor $it" }
+
     private fun sortLabel() = when (sortMode) {
         "new" -> "Zuletzt hinzugefügt"; "year" -> "Neueste zuerst (Jahr)"; "rating" -> "Beste Bewertung"; "name" -> "Name A–Z"; else -> "Standard"
     }
@@ -255,7 +272,7 @@ class VodActivity : Activity() {
     private fun filterInfo(): String {
         val parts = ArrayList<String>()
         if (sortMode != "std") parts.add(sortLabel())
-        yearFilter?.let { parts.add(if (it.first == it.last) "${it.first}" else if (it.first <= 1900) "bis ${it.last}" else "${it.first}–${it.last}") }
+        yearLabel()?.let { parts.add(it) }
         if (minRating > 0) parts.add("★ ab ${minRating.toInt()}")
         return if (parts.isEmpty()) "" else "  ·  " + parts.joinToString(" · ")
     }
@@ -264,7 +281,7 @@ class VodActivity : Activity() {
         val y = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         val items = arrayOf(
             "Sortierung: ${sortLabel()} …",
-            "Jahr: ${yearFilter?.let { if (it.first == it.last) "${it.first}" else if (it.first <= 1900) "bis ${it.last}" else "${it.first}–${it.last}" } ?: "alle"} …",
+            "Jahr: ${yearLabel() ?: "alle"} …",
             "Bewertung: ${if (minRating > 0) "ab ★ ${minRating.toInt()}" else "alle"} …",
             "✕ Alles zurücksetzen"
         )
@@ -281,13 +298,14 @@ class VodActivity : Activity() {
                             }.show()
                     }
                     1 -> {
-                        val ranges = listOf<Pair<String, IntRange?>>(
-                            "Alle Jahre" to null, "$y" to y..y, "${y - 1}" to (y - 1)..(y - 1), "${y - 2}–$y" to (y - 2)..y,
-                            "${y - 5}–$y" to (y - 5)..y, "2010–2019" to 2010..2019, "2000–2009" to 2000..2009,
-                            "1990–1999" to 1990..1999, "bis 1989" to 1900..1989)
+                        // „ab Jahr“ = dieses Jahr und alle neueren; ältere Filme bleiben über „Alle Jahre“ sichtbar
+                        val opts = listOf<Triple<String, Int?, Int?>>(
+                            Triple("Alle Jahre", null, null), Triple("ab $y", y, null), Triple("ab ${y - 1}", y - 1, null),
+                            Triple("ab ${y - 3}", y - 3, null), Triple("ab ${y - 5}", y - 5, null), Triple("ab 2010", 2010, null),
+                            Triple("ab 2000", 2000, null), Triple("vor 2000 (Klassiker)", null, 2000))
                         AlertDialog.Builder(this).setTitle("Erscheinungsjahr")
-                            .setSingleChoiceItems(ranges.map { it.first }.toTypedArray(), ranges.indexOfFirst { it.second == yearFilter }.coerceAtLeast(0)) { d, i ->
-                                yearFilter = ranges[i].second; d.dismiss(); refilter()
+                            .setSingleChoiceItems(opts.map { it.first }.toTypedArray(), opts.indexOfFirst { it.second == yearFrom && it.third == yearBefore }.coerceAtLeast(0)) { d, i ->
+                                yearFrom = opts[i].second; yearBefore = opts[i].third; d.dismiss(); refilter()
                             }.show()
                     }
                     2 -> {
@@ -297,7 +315,7 @@ class VodActivity : Activity() {
                                 minRating = rs[i].first; d.dismiss(); refilter()
                             }.show()
                     }
-                    3 -> { sortMode = "std"; yearFilter = null; minRating = 0.0; store.putString("vodSort_" + (if (series) "s" else "m"), "std"); refilter() }
+                    3 -> { sortMode = "std"; yearFrom = null; yearBefore = null; minRating = 0.0; store.putString("vodSort_" + (if (series) "s" else "m"), "std"); refilter() }
                 }
             }.show()
     }

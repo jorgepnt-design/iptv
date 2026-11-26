@@ -1,6 +1,6 @@
 {
-  "versionCode": 68,
-  "versionName": "2.56",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=68",
-  "notes": "• Filme/Serien: neue Kategorie „🆕 Zuletzt hinzugefügt“\n• „⇅ Sortieren & Filtern“: nach Datum, Jahr, Bewertung oder Name sortieren, nach Jahr und Bewertung filtern\n• Kategorie-Überschrift mit Flagge"
+  "versionCode": 69,
+  "versionName": "2.57",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=69",
+  "notes": "• Filme/Serien deutlich schneller und stabiler (kein Hängen/Absturz mehr bei vielen Filmen)\n• „🆕 Zuletzt hinzugefügt“ jetzt bei jedem Anbieter\n• Jahr-Filter „ab 2025“ usw.: dieses Jahr und alle neueren; leere Kategorien werden beim Filtern ausgeblendet"
 }
