@@ -54,13 +54,14 @@ class VodActivity : Activity() {
         catAdapter = TextAdapter(
             onFocus = { pos -> catKeys.getOrNull(pos)?.let { k -> ui.removeCallbacksAndMessages(null); ui.postDelayed({ showCat(k) }, 150) } },
             onClick = { pos -> catKeys.getOrNull(pos)?.let { showCat(it) }; focusGrid() },
+            onLongClick = { pos -> if (catKeys.getOrNull(pos) == "#resume") confirmClearResume() },
             wrap = true
         )
         cats.layoutManager = LinearLayoutManager(this)
         cats.adapter = catAdapter
         cats.itemAnimator = null
 
-        gridAdapter = PosterAdapter(store) { open(it) }
+        gridAdapter = PosterAdapter(store, onLongClick = { item, pos -> posterOptions(item, pos) }) { open(it) }
         val cols = ((resources.displayMetrics.widthPixels / resources.displayMetrics.density - 330) / 135).toInt().coerceIn(3, 8)
         grid.layoutManager = GridLayoutManager(this, cols)
         grid.adapter = gridAdapter
@@ -223,6 +224,68 @@ class VodActivity : Activity() {
         findViewById<TextView>(R.id.vodHeader).text = "${catLabels.getOrNull(catKeys.indexOf(cat)) ?: ""}  ·  ${l.size} ${if (series) "Serien" else "Filme"}"
     }
 
+    // ---------- Weiterschauen bearbeiten ----------
+
+    /** OK lang auf ein Poster */
+    private fun posterOptions(item: VodItem, pos: Int) {
+        val url = item.url
+        val hasResume = url != null && store.resumePos(url) > 0
+        val opts = ArrayList<Pair<String, () -> Unit>>()
+        opts.add("▶ Abspielen" to { open(item) })
+        if (hasResume) {
+            opts.add("✕ Aus „Weiterschauen“ entfernen" to { removeResume(item, pos) })
+            opts.add("⟲ Von vorne abspielen" to { store.setResumePos(url!!, 0, 0); refreshAfterResume(pos, false); open(item) })
+        }
+        if (shownCat == "#resume") opts.add("🗑 Ganze Liste „Weiterschauen“ leeren" to { confirmClearResume() })
+        AlertDialog.Builder(this).setTitle(item.name)
+            .setItems(opts.map { it.first }.toTypedArray()) { _, w -> opts[w].second() }
+            .show()
+    }
+
+    private fun removeResume(item: VodItem, pos: Int) {
+        val url = item.url ?: return
+        store.setResumePos(url, 0, 0)
+        refreshAfterResume(pos, true)
+        Toast.makeText(this, "„${item.name}“ entfernt", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun confirmClearResume() {
+        val l = resumeItems()
+        if (l.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("„Weiterschauen“ leeren?")
+            .setMessage("${l.size} ${if (l.size == 1) "Film wird" else "Filme werden"} aus der Liste entfernt. Die Filme selbst bleiben erhalten.")
+            .setPositiveButton("Leeren") { _, _ ->
+                l.forEach { it.url?.let { u -> store.setResumePos(u, 0, 0) } }
+                refreshAfterResume(0, true)
+                Toast.makeText(this, "„Weiterschauen“ geleert", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
+    /** Liste und Zähler neu aufbauen, Markierung bleibt möglichst an der Stelle */
+    private fun refreshAfterResume(pos: Int, refocus: Boolean) {
+        val wasResume = shownCat == "#resume"
+        buildCats()
+        if (wasResume) {
+            val l = resumeItems()
+            if (l.isEmpty()) {
+                shownCat = null
+                showCat("")
+                cats.post { cats.findViewHolderForAdapterPosition(catKeys.indexOf(""))?.itemView?.requestFocus() }
+                return
+            }
+            gridAdapter.items = l
+            catAdapter.activePos = catKeys.indexOf("#resume")
+            findViewById<TextView>(R.id.vodHeader).text = "▶ Weiterschauen  ·  ${l.size} Filme"
+            if (refocus) {
+                val p = pos.coerceAtMost(l.size - 1)
+                grid.post { grid.findViewHolderForAdapterPosition(p)?.itemView?.requestFocus() }
+            }
+        } else gridAdapter.notifyDataSetChanged()
+    }
+
     private fun focusGrid() {
         if (gridAdapter.itemCount == 0) return
         grid.scrollToPosition(0)
@@ -341,7 +404,7 @@ class VodActivity : Activity() {
     }
 }
 
-class PosterAdapter(private val store: Store, private val onClick: (VodItem) -> Unit) : RecyclerView.Adapter<PosterAdapter.VH>() {
+class PosterAdapter(private val store: Store, private val onLongClick: (VodItem, Int) -> Unit = { _, _ -> }, private val onClick: (VodItem) -> Unit) : RecyclerView.Adapter<PosterAdapter.VH>() {
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val poster: ImageView = v.findViewById(R.id.poster)
         val fallback: TextView = v.findViewById(R.id.posterFallback)
@@ -369,5 +432,6 @@ class PosterAdapter(private val store: Store, private val onClick: (VodItem) -> 
         val d = if (url != null) store.resumeDur(url) else 0
         if (p > 0 && d > 0) { h.bar.visibility = View.VISIBLE; h.bar.progress = (p * 1000 / d).toInt() } else h.bar.visibility = View.GONE
         h.itemView.setOnClickListener { onClick(item) }
+        h.itemView.setOnLongClickListener { onLongClick(item, h.bindingAdapterPosition); true }
     }
 }
