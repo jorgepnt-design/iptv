@@ -20,8 +20,20 @@ class VodItem(
     val plot: String = "",
     val year: String = "",
     /** nur M3U-Serien: Folgen schon bekannt */
-    val m3uEpisodes: List<Episode>? = null
-)
+    val m3uEpisodes: List<Episode>? = null,
+    /** wann beim Anbieter hinzugefügt (Sekunden), 0 = unbekannt */
+    val added: Long = 0
+) {
+    /** Erscheinungsjahr – aus dem Feld oder aus „Titel (2015)“ */
+    val yearNum: Int? by lazy {
+        year.take(4).toIntOrNull()?.takeIf { it in 1900..2100 }
+            ?: Regex("[(\\[](\\d{4})[)\\]]").findAll(name).lastOrNull()?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1900..2100 }
+    }
+    val ratingNum: Double by lazy {
+        val r = rating.replace(',', '.').toDoubleOrNull() ?: 0.0
+        if (r > 10) r / 10 else r
+    }
+}
 
 class Episode(val season: Int, val number: Int, val title: String, val url: String, val plot: String = "", val duration: String = "")
 
@@ -76,12 +88,14 @@ object Vod {
             val o = arr.optJSONObject(i) ?: continue
             if (series) {
                 items.add(VodItem(str(o, "series_id"), str(o, "name"), str(o, "cover").ifBlank { null }, str(o, "category_id"),
-                    str(o, "rating"), null, true, str(o, "plot"), str(o, "releaseDate").take(4)))
+                    str(o, "rating"), null, true, str(o, "plot"), str(o, "releaseDate").take(4),
+                    added = str(o, "last_modified").toLongOrNull() ?: 0))
             } else {
                 val id = str(o, "stream_id")
                 val ext = str(o, "container_extension").ifBlank { "mp4" }
                 items.add(VodItem(id, str(o, "name"), str(o, "stream_icon").ifBlank { null }, str(o, "category_id"),
-                    str(o, "rating"), "$b/movie/${p.user}/${p.pass}/$id.$ext", false, year = str(o, "year")))
+                    str(o, "rating"), "$b/movie/${p.user}/${p.pass}/$id.$ext", false, year = str(o, "year"),
+                    added = str(o, "added").toLongOrNull() ?: 0))
             }
         }
         return VodCatalog(categories.filter { c -> items.any { it.categoryId == c.id } }, items)

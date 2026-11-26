@@ -1,6 +1,6 @@
 {
-  "versionCode": 67,
-  "versionName": "2.55",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=67",
-  "notes": "• Filme: OK lang auf ein Poster → „Aus Weiterschauen entfernen“ oder „Von vorne abspielen“\n• OK lang auf „Weiterschauen“ → ganze Liste leeren"
+  "versionCode": 68,
+  "versionName": "2.56",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/main/pintotv.apk?v=68",
+  "notes": "• Filme/Serien: neue Kategorie „🆕 Zuletzt hinzugefügt“\n• „⇅ Sortieren & Filtern“: nach Datum, Jahr, Bewertung oder Name sortieren, nach Jahr und Bewertung filtern\n• Kategorie-Überschrift mit Flagge"
 }
