@@ -1,6 +1,6 @@
 {
-  "versionCode": 87,
-  "versionName": "2.75",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/953bc3cd0e14021efe71b7befd959e9f930cb015/pintotv.apk",
-  "notes": "• Filme/Serien: „Zuletzt hinzugefügt (alle)“, „(pro)“ und „(Sltv)“ stehen jetzt oben direkt untereinander"
+  "versionCode": 88,
+  "versionName": "2.76",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/634057603650337a00ef3168c0331fa6e79b57d7/pintotv.apk",
+  "notes": "• Multi-View: „Sender wechseln“ öffnet direkt die Senderliste mit dem laufenden Sender markiert\n• Multi-View: Jedes Fenster zeigt oben links dauerhaft, aus welcher Playlist der Sender kommt (eigene Farbe je Playlist)"
 }
