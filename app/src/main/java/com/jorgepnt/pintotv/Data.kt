@@ -61,7 +61,11 @@ object Countries {
         "IN" to "Indien", "PK" to "Pakistan", "SE" to "Schweden", "NO" to "Norwegen", "DK" to "Dänemark",
         "FI" to "Finnland", "CZ" to "Tschechien", "HU" to "Ungarn", "BG" to "Bulgarien", "CA" to "Kanada",
         "MX" to "Mexiko", "LAT" to "Lateinamerika", "AF" to "Afrika", "KU" to "Kurdisch", "IR" to "Iran",
-        "IL" to "Israel", "UA" to "Ukraine", "BA" to "Bosnien", "MK" to "Nordmazedonien", "SI" to "Slowenien"
+        "IL" to "Israel", "UA" to "Ukraine", "BA" to "Bosnien", "MK" to "Nordmazedonien", "SI" to "Slowenien",
+        "IS" to "Island", "EE" to "Estland", "LV" to "Lettland", "LT" to "Litauen", "SK" to "Slowakei", "IE" to "Irland",
+        "CN" to "China", "JP" to "Japan", "KR" to "Korea", "TH" to "Thailand", "VN" to "Vietnam", "PH" to "Philippinen",
+        "AU" to "Australien", "ZA" to "Südafrika", "EG" to "Ägypten", "MA" to "Marokko", "TN" to "Tunesien", "DZ" to "Algerien",
+        "SA" to "Saudi-Arabien", "CY" to "Zypern", "LU" to "Luxemburg", "MT" to "Malta", "ME" to "Montenegro"
     )
     private val words = listOf(
         "deutsch" to "DE", "germany" to "DE", "german" to "DE", "portug" to "PT", "brasil" to "BR", "brazil" to "BR",
@@ -75,7 +79,9 @@ object Countries {
         "srbija" to "RS", "serbia" to "RS", "shqip" to "AL", "albania" to "AL", "hindi" to "IN", "pakistan" to "PK",
         "česk" to "CZ", "czech" to "CZ", "magyar" to "HU", "hungar" to "HU", "bulgar" to "BG", "canada" to "CA",
         "mexic" to "MX", "latino" to "LAT", "kurd" to "KU", "persian" to "IR", "farsi" to "IR", "israel" to "IL",
-        "ukrain" to "UA", "bosn" to "BA", "macedon" to "MK", "sloven" to "SI", "africa" to "AF", "united states" to "US"
+        "ukrain" to "UA", "bosn" to "BA", "macedon" to "MK", "sloven" to "SI", "africa" to "AF", "united states" to "US", "suomen" to "FI", "íslands" to "IS", "islands " to "IS", "iceland" to "IS",
+        "eesti" to "EE", "latvi" to "LV", "lietuv" to "LT", "sloven" to "SI", "irish" to "IE", "japan" to "JP",
+        "korea" to "KR", "chinese" to "CN", "thai" to "TH", "viet" to "VN", "filipin" to "PH", "australia" to "AU"
     )
 
     /** Erwachsenen-Inhalte erkennen – eigene „Länder“-Gruppe, damit man sie gezielt ein-/ausblenden kann */

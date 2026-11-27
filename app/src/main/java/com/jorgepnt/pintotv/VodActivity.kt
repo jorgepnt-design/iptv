@@ -196,8 +196,24 @@ class VodActivity : Activity() {
     private fun isHidden(p: Playlist, name: String, hid: Set<String>): Boolean {
         if (name in hid) return true
         val allowed = liveAllowed[p.id] ?: return false
-        val c = Countries.code(name)
+        val c = catCode[p.id + "\u0001" + name] ?: Countries.code(name)
         return c != "?" && c !in allowed
+    }
+
+    /** Land einer Kategorie, deren Name kein Land verrät – aus den Titeln darin („FI - Ella …“, „(DE-) …“) */
+    private val catCode = HashMap<String, String>()
+
+    private fun guessCategoryCountries(p: Playlist, catalog: VodCatalog) {
+        val byId = HashMap<String, MutableList<VodItem>>()
+        catalog.items.forEach { if ((byId[it.categoryId]?.size ?: 0) < 40) byId.getOrPut(it.categoryId) { ArrayList() }.add(it) }
+        catalog.categories.forEach { c ->
+            if (Countries.code(c.name) != "?") return@forEach
+            val counts = HashMap<String, Int>()
+            byId[c.id].orEmpty().forEach { v -> val k = Countries.code(v.name); if (k != "?") counts[k] = (counts[k] ?: 0) + 1 }
+            val best = counts.maxByOrNull { it.value } ?: return@forEach
+            val sample = byId[c.id].orEmpty().size
+            if (best.value >= 3 || best.value * 2 >= sample) catCode[p.id + "\u0001" + c.name] = best.key
+        }
     }
 
     private fun hiddenKey(p: Playlist) = p.id + if (series) ":series" else ":movies"
@@ -243,6 +259,7 @@ class VodActivity : Activity() {
         // Kategorien je Playlist: (Schlüssel, Name, Playlist)
         val catRows = ArrayList<Triple<String, String, Playlist>>()
         for ((p, catalog) in parts) {
+            if (liveAllowed[p.id] != null) guessCategoryCountries(p, catalog)
             val hk = hiddenKey(p)
             store.applyAllowedCountries(hk, catalog.categories.map { it.name })
             val hid = store.hiddenGroups(hk)
