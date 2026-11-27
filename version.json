@@ -1,6 +1,6 @@
 {
-  "versionCode": 80,
-  "versionName": "2.68",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/92d63ab8d2331cc77d37748e54f0e7a7dc74c566/pintotv.apk",
-  "notes": "• Favoritenlisten-Menü bleibt nach einer Änderung offen (z. B. Länder-Sortierung AN/AUS), Fokus bleibt auf derselben Zeile\n• „Leeren“ fragt jetzt vorher nach"
+  "versionCode": 81,
+  "versionName": "2.69",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/7c54fe778742ca6598c1fb8a765b6a1cf84ef806/pintotv.apk",
+  "notes": "• Alle Playlists (z. B. Sltv und Pro) stehen direkt oben in der Liste – Wechsel ohne Neuladen\n• Filme und Serien zeigen alle Playlists zusammen, mit Überschrift je Playlist\n• „Aktualisieren“ lädt alle Playlists neu (TV, Filme, Serien)"
 }
