@@ -1,6 +1,6 @@
 {
-  "versionCode": 95,
-  "versionName": "2.83",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/c9b5ca9927975bf84bc73d0a7fb686862b2ce060/pintotv.apk",
-  "notes": "• Deine Länderauswahl gilt jetzt für ALLE Playlists – TV, Filme und Serien\n• Neue Playlists übernehmen automatisch dieselben Länder\n• Mehr Länder erkannt (z. B. „DANSKE“, „NORGE“, „SVENSKA“)"
+  "versionCode": 96,
+  "versionName": "2.84",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/ca1fa180b61252042d9d46611e46067c84e5156f/pintotv.apk",
+  "notes": "• Filme/Serien: Land einer Kategorie wird jetzt auch an den Titeln erkannt (z. B. „FI - …“) – fremde Länder verschwinden zuverlässiger\n• Mehr Länder erkannt (z. B. Finnisch „SUOMEN“, Isländisch „ÍSLANDS“)"
 }
