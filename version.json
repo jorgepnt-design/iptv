@@ -1,6 +1,6 @@
 {
-  "versionCode": 85,
-  "versionName": "2.73",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/6ad15e5922ec16ee36c44df27ce25c2a70795fe7/pintotv.apk",
-  "notes": "• Menü mit schlichten Symbolen (TV, Filme, Serien, Suche …), auch bei Playlists, Favoriten und Filme/Serien in der Liste\n• Bei offenem Menü steht das Vorschaubild nicht mehr mitten im Text"
+  "versionCode": 86,
+  "versionName": "2.74",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/26a4cb41875a22d3cc36a1bc93c3d5b6d4a984fe/pintotv.apk",
+  "notes": "• Filme/Serien: „Zuletzt hinzugefügt“ jetzt auch je Playlist (unter PRO und SLTV)\n• In gemischten Listen steht vor dem Titel, aus welcher Playlist ein Film kommt"
 }
