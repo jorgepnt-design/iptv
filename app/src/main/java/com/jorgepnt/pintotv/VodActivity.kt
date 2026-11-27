@@ -72,6 +72,8 @@ class VodActivity : Activity() {
         cats.itemAnimator = null
 
         gridAdapter = PosterAdapter(store, onLongClick = { item, pos -> posterOptions(item, pos) }) { open(it) }
+        // bei mehreren Playlists: in gemischten Listen zeigen, woher ein Film kommt
+        gridAdapter.source = { item -> if (parts.size > 1 && (shownCat == null || shownCat!!.isEmpty() || shownCat in setOf("#new", "#resume", "#search"))) plOf(item).name else null }
         val cols = ((resources.displayMetrics.widthPixels / resources.displayMetrics.density - 330) / 135).toInt().coerceIn(3, 8)
         grid.layoutManager = GridLayoutManager(this, cols)
         grid.adapter = gridAdapter
@@ -223,6 +225,12 @@ class VodActivity : Activity() {
     private var byCat: Map<String, List<VodItem>> = emptyMap()
     private var resumeCache: List<VodItem> = emptyList()
     private var newCache: List<VodItem> = emptyList()
+    /** „Zuletzt hinzugefügt“ je Playlist */
+    private var newByPl: Map<String, List<VodItem>> = emptyMap()
+    private fun newest(l: List<VodItem>): List<VodItem> {
+        val hasDate = l.any { it.added > 0 }
+        return l.sortedByDescending { if (hasDate) it.added else (it.id.toLongOrNull() ?: 0L) }.take(200)
+    }
     private val sortedCache = HashMap<String, List<VodItem>>()
 
     private fun buildCats() {
@@ -247,21 +255,30 @@ class VodActivity : Activity() {
             if (hs.isEmpty()) emptyList() else parts.flatMap { it.second.items }.filter { it.url != null && it.url.hashCode() in hs }
         }
         // „Zuletzt hinzugefügt“: Datum vom Anbieter, sonst die Nummer (neuere Einträge haben höhere Nummern)
-        val hasDate = visibleItems.any { it.added > 0 }
-        newCache = visibleItems.sortedByDescending { if (hasDate) it.added else (it.id.toLongOrNull() ?: 0L) }.take(200)
+        newCache = newest(visibleItems)
+        newByPl = if (multi) parts.associate { (p, _) -> p.id to newest(visibleItems.filter { owner[it] === p }) } else emptyMap()
         sortedCache.clear()
         val filtering = yearFrom != null || yearBefore != null || minRating > 0
         val counts: Map<String, Int> = if (filtering) byCat.mapValues { e -> e.value.count { passes(it) } } else byCat.mapValues { it.value.size }
         val keys = ArrayList<String>(); val labels = ArrayList<String>(); val nums = ArrayList<String>(); val heads = ArrayList<String?>()
         if (resumeCache.isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen"); nums.add(resumeCache.size.toString()); heads.add(null) }
         if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis"); nums.add(searchResults.size.toString()); heads.add(null) }
-        if (newCache.isNotEmpty()) { keys.add("#new"); labels.add("🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()); heads.add(null) }
+        if (newCache.isNotEmpty()) { keys.add("#new"); labels.add(if (multi) "🆕 Zuletzt hinzugefügt (alle)" else "🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()); heads.add(null) }
         keys.add(""); labels.add(if (multi) "Alle (${parts.joinToString(" + ") { it.first.name }})" else "Alle")
         nums.add((if (filtering) counts.values.sum() else visibleItems.size).toString()); heads.add(null)
         var lastPl: String? = null
         catRows.forEach { (k, name, p) ->
             val n = counts[k] ?: 0
             if (filtering && n == 0) return@forEach   // beim Filtern leere Kategorien ausblenden
+            if (multi && p.id != lastPl) {
+                // je Playlist zuerst ihre eigenen Neuheiten
+                val nl = newByPl[p.id].orEmpty()
+                if (nl.isNotEmpty()) {
+                    keys.add("#new:" + p.id); labels.add("🆕 Zuletzt hinzugefügt · ${p.name}"); nums.add(nl.size.toString())
+                    heads.add("📡  ${p.name.uppercase()}")
+                    lastPl = p.id
+                }
+            }
             keys.add(k); labels.add(name); nums.add(n.toString())
             heads.add(if (multi && p.id != lastPl) "📡  ${p.name.uppercase()}" else null)
             lastPl = p.id
@@ -280,6 +297,8 @@ class VodActivity : Activity() {
         val r = when (cat) {
             "#resume" -> resumeCache
             "#new" -> newCache
+            else -> if (cat.startsWith("#new:")) newByPl[cat.removePrefix("#new:")].orEmpty() else null
+        } ?: when (cat) {
             "#search" -> applySortFilter(searchResults)
             "" -> applySortFilter(visibleItems)
             else -> applySortFilter(byCat[cat] ?: emptyList())
@@ -389,7 +408,7 @@ class VodActivity : Activity() {
         grid.scrollToPosition(0)
         catAdapter.activePos = catKeys.indexOf(cat)
         val lab = catLabels.getOrNull(catKeys.indexOf(cat)) ?: ""
-        findViewById<TextView>(R.id.vodHeader).text = "${if (cat.isEmpty() || cat.startsWith("#")) lab else Countries.pretty(lab)}  ·  ${l.size} ${if (series) "Serien" else "Filme"}${if (cat == "#resume" || cat == "#new") "" else filterInfo()}"
+        findViewById<TextView>(R.id.vodHeader).text = "${if (cat.isEmpty() || cat.startsWith("#")) lab else Countries.pretty(lab)}  ·  ${l.size} ${if (series) "Serien" else "Filme"}${if (cat == "#resume" || cat.startsWith("#new")) "" else filterInfo()}"
     }
 
     // ---------- Weiterschauen bearbeiten ----------
@@ -585,12 +604,19 @@ class PosterAdapter(private val store: Store, private val onLongClick: (VodItem,
     var items: List<VodItem> = emptyList()
         set(v) { field = v; notifyDataSetChanged() }
 
+    /** kleine Quelle vor dem Titel („pro · …“), wenn mehrere Playlists zusammen angezeigt werden */
+    var source: ((VodItem) -> String?)? = null
+
     override fun onCreateViewHolder(p: ViewGroup, t: Int) = VH(LayoutInflater.from(p.context).inflate(R.layout.item_poster, p, false))
     override fun getItemCount() = items.size
 
     override fun onBindViewHolder(h: VH, pos: Int) {
         val item = items[pos]
-        h.title.text = item.name
+        val src = source?.invoke(item)
+        h.title.text = if (src != null) android.text.SpannableString("$src · ${item.name}").apply {
+            setSpan(android.text.style.ForegroundColorSpan(0xFF8FA8FF.toInt()), 0, src.length, 0)
+            setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, src.length, 0)
+        } else item.name
         h.fallback.text = item.name
         h.poster.load(item.poster) { crossfade(false); size(240, 360) }
         val r = item.rating.toDoubleOrNull()
