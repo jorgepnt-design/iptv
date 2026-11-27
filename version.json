@@ -1,6 +1,6 @@
 {
-  "versionCode": 91,
-  "versionName": "2.79",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/a178ee11acca173baf472f5d0c8d410c130ecd1e/pintotv.apk",
-  "notes": "• Favoriten gelten wieder für alle Playlists gemeinsam – wie vor 2.78\n• Deine Listen „Fav“ und „Favoriten“ sind mit allen Sendern wieder da"
+  "versionCode": 92,
+  "versionName": "2.80",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/166eebaa4c25ceda60e4a708e7cfe2779c99796b/pintotv.apk",
+  "notes": "• Absturz „OutOfMemoryError“ behoben: sehr große Film-/Serienlisten (z. B. pro) werden jetzt Stück für Stück geladen\n• Geht beim Vorladen trotzdem etwas schief, stürzt die App nicht mehr ab"
 }
