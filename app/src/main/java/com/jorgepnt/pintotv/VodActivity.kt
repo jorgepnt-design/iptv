@@ -314,12 +314,15 @@ class VodActivity : Activity() {
 
     private fun applySortFilter(src: List<VodItem>): List<VodItem> {
         val l = if (yearFrom != null || yearBefore != null || minRating > 0) src.filter { passes(it) } else src
+        // Schlüssel je Eintrag nur einmal berechnen, dann sortieren (schnell auch bei sehr großen Listen)
+        fun byName() = l.map { it to it.name.lowercase() }.sortedBy { it.second }.map { it.first }
         return when (sortMode) {
             "new" -> l.sortedByDescending { it.added }
-            "year" -> l.sortedWith(compareByDescending<VodItem> { it.yearNum ?: 0 }.thenByDescending { it.added })
-            "rating" -> l.sortedByDescending { it.ratingNum }
-            "name" -> l.sortedBy { it.name.lowercase() }
-            else -> if (store.sortByName) l.sortedBy { it.name.lowercase() } else l
+            "year" -> l.map { Triple(it, it.yearNum ?: 0, it.added) }
+                .sortedWith(compareByDescending<Triple<VodItem, Int, Long>> { it.second }.thenByDescending { it.third }).map { it.first }
+            "rating" -> l.map { it to it.ratingNum }.sortedByDescending { it.second }.map { it.first }
+            "name" -> byName()
+            else -> if (store.sortByName) byName() else l
         }
     }
 

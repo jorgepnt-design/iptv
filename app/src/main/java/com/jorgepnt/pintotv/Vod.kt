@@ -25,14 +25,30 @@ class VodItem(
     /** wann beim Anbieter hinzugefügt (Sekunden), 0 = unbekannt */
     val added: Long = 0
 ) {
+    // einmal berechnet und gemerkt (bei über 100 000 Filmen zählt jede Kleinigkeit)
+    private var yearCache = -1
+    private var ratingCache = -1.0
+
     /** Erscheinungsjahr – aus dem Feld oder aus „Titel (2015)“ */
-    val yearNum: Int? by lazy {
-        year.take(4).toIntOrNull()?.takeIf { it in 1900..2100 }
-            ?: Regex("[(\\[](\\d{4})[)\\]]").findAll(name).lastOrNull()?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1900..2100 }
-    }
-    val ratingNum: Double by lazy {
-        val r = rating.replace(',', '.').toDoubleOrNull() ?: 0.0
-        if (r > 10) r / 10 else r
+    val yearNum: Int?
+        get() {
+            if (yearCache == -1) {
+                yearCache = year.take(4).toIntOrNull()?.takeIf { it in 1900..2100 }
+                    ?: YEAR_IN_NAME.findAll(name).lastOrNull()?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1900..2100 } ?: 0
+            }
+            return yearCache.takeIf { it > 0 }
+        }
+    val ratingNum: Double
+        get() {
+            if (ratingCache < 0) {
+                val r = rating.replace(',', '.').toDoubleOrNull() ?: 0.0
+                ratingCache = if (r > 10) r / 10 else if (r < 0) 0.0 else r
+            }
+            return ratingCache
+        }
+
+    companion object {
+        private val YEAR_IN_NAME = Regex("[(\\[](\\d{4})[)\\]]")
     }
 }
 
