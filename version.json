@@ -1,6 +1,6 @@
 {
-  "versionCode": 82,
-  "versionName": "2.70",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/b6ad622d32230bf614d7b2a49648633e08193ea6/pintotv.apk",
-  "notes": "• Playlist oben in der Liste wählen: Der Bildschirm bleibt offen und zeigt direkt die Sender dieser Playlist – der laufende Sender spielt weiter"
+  "versionCode": 83,
+  "versionName": "2.71",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/44fddedd3b72dbf67eb4ac9035b1e3838c732b8a/pintotv.apk",
+  "notes": "• Filme und Serien zeigen nur die Länder, die du im Live-TV ausgewählt hast (für jede Playlist)\n• Kürzel wie „(S|FR)“ werden jetzt als Land erkannt"
 }
