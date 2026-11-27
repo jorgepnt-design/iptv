@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -67,6 +68,12 @@ class VodPlayerActivity : Activity() {
 
         player = Players.create(this) { ua }
         view.player = player
+        // Untertitel standardmäßig aus (oder wie zuletzt gewählt)
+        val subs = store.getString("vodSubs", "off")
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, subs == "off")
+            .apply { if (subs != "off" && subs != "on") setPreferredTextLanguage(subs) }
+            .build()
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
@@ -112,7 +119,7 @@ class VodPlayerActivity : Activity() {
             progress.progress = if (d > 0) (p * 1000 / d).toInt() else 0
             val state = if (!player.playWhenReady) "⏸ Pause   ·   " else ""
             timeText.text = state + fmtTime(p) + " / " + (if (d > 0) fmtTime(d) else "--:--") +
-                "        ◀ ▶ spulen · ▲ ▼ 5 Min. · OK Pause"
+                "        ◀ ▶ spulen · ▲ ▼ 5 Min. · OK Pause · OK lang: Untertitel/Ton"
             if (bar.visibility == View.VISIBLE) ui.postDelayed(this, 500)
         }
     }
@@ -150,6 +157,51 @@ class VodPlayerActivity : Activity() {
         player.release()
     }
 
+    /** Untertitel ein/aus und Tonspur wählen */
+    private fun tracksDialog() {
+        val labels = ArrayList<String>(); val acts = ArrayList<() -> Unit>()
+        val params = player.trackSelectionParameters
+        val subsOff = C.TRACK_TYPE_TEXT in params.disabledTrackTypes
+        labels.add((if (subsOff) "● " else "    ") + "Untertitel aus")
+        acts.add {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).clearOverridesOfType(C.TRACK_TYPE_TEXT).build()
+            store.putString("vodSubs", "off")
+            Toast.makeText(this, "Untertitel aus", Toast.LENGTH_SHORT).show()
+        }
+        fun name(f: androidx.media3.common.Format, i: Int): String {
+            val lang = f.language?.let { l -> java.util.Locale(l).getDisplayLanguage(java.util.Locale.GERMAN).ifBlank { l } }
+            return listOfNotNull(f.label, lang).distinct().joinToString(" · ").ifBlank { "Spur ${i + 1}" }
+        }
+        var n = 0
+        player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { g ->
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i); val idx = n++
+                labels.add((if (!subsOff && g.isTrackSelected(i)) "● " else "    ") + "Untertitel: " + name(f, idx))
+                acts.add {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+                    store.putString("vodSubs", f.language ?: "on")
+                }
+            }
+        }
+        if (n == 0) labels.add("    (dieser Film hat keine wählbaren Untertitel)").also { acts.add {} }
+        var a = 0
+        player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { g ->
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i); val idx = a++
+                labels.add((if (g.isTrackSelected(i)) "● " else "    ") + "Ton: " + name(f, idx))
+                acts.add {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+                }
+            }
+        }
+        android.app.AlertDialog.Builder(this).setTitle("Untertitel & Ton")
+            .setItems(labels.toTypedArray()) { _, w -> acts.getOrNull(w)?.invoke() }.show()
+    }
+
     private fun seek(delta: Long) {
         val d = player.duration
         var t = player.currentPosition + delta
@@ -159,7 +211,23 @@ class VodPlayerActivity : Activity() {
         showBar()
     }
 
+    private fun isOk(k: Int) = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_NUMPAD_ENTER
+    private var okDown = 0L
+    private var okLongDone = false
+
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        // OK kurz = Pause, OK lang = Untertitel & Ton
+        if (isOk(e.keyCode)) {
+            if (e.action == KeyEvent.ACTION_DOWN) {
+                if (e.repeatCount == 0) { okDown = e.eventTime; okLongDone = false }
+                else if (!okLongDone && e.eventTime - okDown > 600) { okLongDone = true; tracksDialog() }
+                return true
+            }
+            if (e.action == KeyEvent.ACTION_UP) {
+                if (!okLongDone) { player.playWhenReady = !player.playWhenReady; showBar() }
+                return true
+            }
+        }
         if (e.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e)
         // Lange gedrückt halten spult schneller
         val fast = if (e.repeatCount > 5) 6 else 1
@@ -168,14 +236,14 @@ class VodPlayerActivity : Activity() {
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seek(30_000L * fast); return true }
             KeyEvent.KEYCODE_DPAD_UP -> { seek(5 * 60_000L); return true }
             KeyEvent.KEYCODE_DPAD_DOWN -> { seek(-5 * 60_000L); return true }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
                 if (e.repeatCount == 0) player.playWhenReady = !player.playWhenReady
                 showBar(); return true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { player.playWhenReady = true; return true }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.playWhenReady = false; showBar(); return true }
-            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> { showBar(); return true }
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_CAPTIONS -> { tracksDialog(); return true }
+            KeyEvent.KEYCODE_INFO -> { showBar(); return true }
         }
         return super.dispatchKeyEvent(e)
     }
