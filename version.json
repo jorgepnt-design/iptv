@@ -1,6 +1,6 @@
 {
-  "versionCode": 90,
-  "versionName": "2.78",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/db0d9e94f262fd0c9bea18557214118d43b983b8/pintotv.apk",
-  "notes": "• Jede Playlist hat jetzt eigene Favoritenlisten – eine neue Playlist startet leer\n• Deine bisherigen Favoriten bleiben bei der Playlist, zu der sie gehören"
+  "versionCode": 91,
+  "versionName": "2.79",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/a178ee11acca173baf472f5d0c8d410c130ecd1e/pintotv.apk",
+  "notes": "• Favoriten gelten wieder für alle Playlists gemeinsam – wie vor 2.78\n• Deine Listen „Fav“ und „Favoriten“ sind mit allen Sendern wieder da"
 }
