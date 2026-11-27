@@ -162,6 +162,9 @@ class VodActivity : Activity() {
                     if (c.items.isNotEmpty()) res.add(p to c)
                 } catch (e: Exception) { errs.add("${p.name}: ${e.message}") }
             }
+            liveAllowed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                res.associate { (p, _) -> p.id to Repo.liveCountries(this@VodActivity, p.id) }
+            }
             loading(null)
             parts = res
             owner.clear()
@@ -179,6 +182,17 @@ class VodActivity : Activity() {
             showCat(catKeys.first())
             cats.post { cats.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
         }
+    }
+
+    /** im Live-TV gewählte Länder je Playlist (null = alle) */
+    private var liveAllowed: Map<String, Set<String>?> = emptyMap()
+
+    /** Kategorie ausgeblendet: selbst ausgeblendet oder Land im Live-TV abgewählt (ohne Land bleibt sichtbar) */
+    private fun isHidden(p: Playlist, name: String, hid: Set<String>): Boolean {
+        if (name in hid) return true
+        val allowed = liveAllowed[p.id] ?: return false
+        val c = Countries.code(name)
+        return c != "?" && c !in allowed
     }
 
     private fun hiddenKey(p: Playlist) = p.id + if (series) ":series" else ":movies"
@@ -221,11 +235,11 @@ class VodActivity : Activity() {
             val hk = hiddenKey(p)
             store.applyAllowedCountries(hk, catalog.categories.map { it.name })
             val hid = store.hiddenGroups(hk)
-            val hiddenIds = catalog.categories.filter { it.name in hid }.map { it.id }.toSet()
+            val hiddenIds = catalog.categories.filter { isHidden(p, it.name, hid) }.map { it.id }.toSet()
             val v = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
             vis.addAll(v)
             v.groupBy { it.categoryId }.forEach { (id, l) -> bc[key(p, id)] = l }
-            catalog.categories.filter { it.name !in hid }.forEach { c -> catRows.add(Triple(key(p, c.id), c.name, p)) }
+            catalog.categories.filter { !isHidden(p, it.name, hid) }.forEach { c -> catRows.add(Triple(key(p, c.id), c.name, p)) }
         }
         visibleItems = vis
         byCat = bc

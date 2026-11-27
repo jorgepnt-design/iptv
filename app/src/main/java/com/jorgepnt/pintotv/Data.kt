@@ -65,13 +65,16 @@ object Countries {
     )
     private val words = listOf(
         "deutsch" to "DE", "germany" to "DE", "german" to "DE", "portug" to "PT", "brasil" to "BR", "brazil" to "BR",
-        "españa" to "ES", "spain" to "ES", "france" to "FR", "italia" to "IT", "italy" to "IT", "turk" to "TR",
+        "españa" to "ES", "spain" to "ES", "france" to "FR", "français" to "FR", "francais" to "FR", "italia" to "IT", "italy" to "IT", "turk" to "TR",
         "türk" to "TR", "poland" to "PL", "polska" to "PL", "österreich" to "AT", "austria" to "AT", "schweiz" to "CH",
         "swiss" to "CH", "england" to "UK", "united kingdom" to "UK", "arab" to "AR"
     )
 
     /** Erwachsenen-Inhalte erkennen – eigene „Länder“-Gruppe, damit man sie gezielt ein-/ausblenden kann */
     private val adult = Regex("xxx|adult|18\\+|\\+18|porn|erotik|erotic|for adults|🔞", RegexOption.IGNORE_CASE)
+
+    /** „(S|FR) Française Série“, „[M|DE] Filme“: Ländercode hinter einem Kürzel */
+    private val tagged = Regex("^[\\s(\\[]*[A-Za-z]{1,3}\\s*[|/]\\s*([A-Za-z]{2,3})\\s*[)\\]|]")
 
     private val prefixSpace = Regex("^[\\s|\\[(★✪•]*([A-Z]{2,3})\\s+\\S")
 
@@ -100,6 +103,7 @@ object Countries {
     fun bare(group: String): String {
         val c = code(group)
         if (c == "?" || c == "XXX") return group.trim()
+        tagged.find(group)?.let { t -> if (norm(t.groupValues[1].uppercase()) == c) return group.substring(t.range.last + 1).trim().ifEmpty { group.trim() } }
         val m = strip.find(group) ?: return group.trim()
         if (norm(m.value.trim().takeWhile { it.isLetter() }.uppercase()) != c) return group.trim()
         return group.substring(m.range.last + 1).trim().ifEmpty { group.trim() }
@@ -118,6 +122,7 @@ object Countries {
         if (adult.containsMatchIn(group)) return "XXX"
         flag(group)?.let { return it }
         // „DE VIP SPORT“, „PT SPORT“: großgeschriebener Ländercode mit Leerzeichen dahinter
+        tagged.find(group)?.let { m -> val c = m.groupValues[1].uppercase(); if (c in names) return norm(c) }
         prefixSpace.find(group)?.let { m -> val c = m.groupValues[1]; if (c in names) return norm(c) }
         prefix.find(group)?.let { return norm(it.groupValues[1].uppercase()) }
         val g = group.lowercase()
@@ -827,6 +832,32 @@ object Repo {
 
     /** schon geladene Playlist (aktiv oder vorgeladen) */
     fun loaded(pid: String): Loaded? = if (pid == playlistId) activeLoaded else others[pid]
+
+    /** Gruppennamen einer Playlist (geladen oder aus der gespeicherten Senderliste) */
+    fun groupsOf(ctx: Context, pid: String): List<String> {
+        loaded(pid)?.let { return it.groups }
+        val f = File(ctx.filesDir, "ch_$pid.json")
+        if (!f.exists()) return emptyList()
+        return try {
+            val a = JSONObject(f.readText()).getJSONArray("ch")
+            val out = LinkedHashSet<String>()
+            for (i in 0 until a.length()) out.add(a.getJSONArray(i).getString(3))
+            out.toList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /** Länder, die im Live-TV sichtbar sind (null = keine Einschränkung) – gilt auch für Filme/Serien */
+    fun liveCountries(ctx: Context, pid: String): Set<String>? {
+        val groups = groupsOf(ctx, pid)
+        if (groups.isEmpty()) return null
+        val store = Store(ctx)
+        store.applyAllowedCountries(pid, groups)
+        val hidden = store.hiddenGroups(pid)
+        if (hidden.isEmpty()) return null
+        val all = groups.map { Countries.code(it) }.toSet()
+        val vis = groups.filter { it !in hidden }.map { Countries.code(it) }.toSet()
+        return if (vis.containsAll(all)) null else vis
+    }
 
     /** Filme/Serien-Einträge einer M3U-Playlist */
     fun vodOf(pid: String): List<Channel> = if (pid == playlistId) m3uVod else others[pid]?.vod ?: emptyList()

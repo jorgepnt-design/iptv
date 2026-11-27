@@ -134,5 +134,11 @@ class VodTest {
         org.junit.Assert.assertEquals("PT", Countries.code("\uD83C\uDDF5\uD83C\uDDF9 Desporto"))
         org.junit.Assert.assertEquals("UK", Countries.code("\uD83C\uDDEC\uD83C\uDDE7 News"))
         org.junit.Assert.assertEquals("?", Countries.code("Sport Mix"))
+        org.junit.Assert.assertEquals("FR", Countries.code("(S|FR) Française Série"))
+        org.junit.Assert.assertEquals("FR", Countries.code("(S|FR) Manga De La Série"))
+        org.junit.Assert.assertEquals("DE", Countries.code("[M|DE] Action"))
+        org.junit.Assert.assertEquals("TR", Countries.code("(TR-) Diziler"))
+        org.junit.Assert.assertEquals("Française Série", Countries.bare("(S|FR) Française Série"))
+        org.junit.Assert.assertEquals("DE", Countries.code("DE | SKY | Sport"))
     }
 }
