@@ -1,6 +1,6 @@
 {
-  "versionCode": 86,
-  "versionName": "2.74",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/26a4cb41875a22d3cc36a1bc93c3d5b6d4a984fe/pintotv.apk",
-  "notes": "• Filme/Serien: „Zuletzt hinzugefügt“ jetzt auch je Playlist (unter PRO und SLTV)\n• In gemischten Listen steht vor dem Titel, aus welcher Playlist ein Film kommt"
+  "versionCode": 87,
+  "versionName": "2.75",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/953bc3cd0e14021efe71b7befd959e9f930cb015/pintotv.apk",
+  "notes": "• Filme/Serien: „Zuletzt hinzugefügt (alle)“, „(pro)“ und „(Sltv)“ stehen jetzt oben direkt untereinander"
 }
