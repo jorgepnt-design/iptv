@@ -1,6 +1,6 @@
 {
-  "versionCode": 89,
-  "versionName": "2.77",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/8f50dd32cfcc3fdb91fe4ddbefdf48330eb33f4b/pintotv.apk",
-  "notes": "• Absturz „Bedienung hing“ beim Öffnen der Senderliste behoben (große Playlist, Sortierung nach Name)\n• Senderliste öffnet schneller"
+  "versionCode": 90,
+  "versionName": "2.78",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/db0d9e94f262fd0c9bea18557214118d43b983b8/pintotv.apk",
+  "notes": "• Jede Playlist hat jetzt eigene Favoritenlisten – eine neue Playlist startet leer\n• Deine bisherigen Favoriten bleiben bei der Playlist, zu der sie gehören"
 }
