@@ -494,7 +494,7 @@ class PlayerActivity : Activity() {
         val sorted = when {
             g == G_RECENT -> l
             g in favGroups.keys && store.favLists().firstOrNull { it.name == favGroups[g] }?.manual == true -> l // eigene Reihenfolge
-            store.sortByName -> l.sortedBy { it.name.lowercase().trimStart('★', ' ', '|') }
+            store.sortByName -> sortByName(l)
             else -> l.sortedBy { it.number } // nach Nummer (berücksichtigt eigene Nummern)
         }
         // Favoriten nach Ländern: Reihenfolge wie bei „Gruppen / Länder“, innerhalb eines Landes bleibt die Ordnung
@@ -503,6 +503,16 @@ class PlayerActivity : Activity() {
             return sorted.sortedBy { rank[Countries.code(it.group)] ?: Int.MAX_VALUE }
         }
         return sorted
+    }
+
+    /** Sortierschlüssel je Sender nur einmal berechnen (bei 13 000 Sendern sonst Hänger) */
+    private var nameSortCache: Pair<List<Channel>, List<Channel>>? = null
+    private fun sortByName(l: List<Channel>): List<Channel> {
+        nameSortCache?.let { (src, res) -> if (src === l) return res }
+        val keyed = l.map { c -> c to c.name.lowercase().trimStart('★', ' ', '|') }
+        val res = keyed.sortedBy { it.second }.map { it.first }
+        if (l.size > 500) nameSortCache = l to res
+        return res
     }
 
     /** Gruppen in eigener Reihenfolge: zuerst manuell sortierte, dann nach Länder-Vorrang, dann Anbieter-Reihenfolge */
@@ -526,12 +536,20 @@ class PlayerActivity : Activity() {
         ))
     }
 
+    private var favIdx: Pair<List<Channel>, Map<String, List<Channel>>>? = null
+    /** Favoriten-Schlüssel → Sender, nur neu berechnet, wenn sich die Senderliste ändert */
+    private fun favIndex(): Map<String, List<Channel>> {
+        val all = Repo.channels
+        favIdx?.let { (src, m) -> if (src === all) return m }
+        return all.groupBy { favKey(it) }.also { favIdx = all to it }
+    }
+
     private fun channelsOfRaw(g: String): List<Channel> {
         playlist?.id ?: return emptyList()
         return when (g) {
             in favGroups.keys -> {
                 val keys = store.favLists().firstOrNull { it.name == favGroups[g] }?.keys ?: emptySet<String>()
-                val byKey = Repo.channels.groupBy { favKey(it) }
+                val byKey = favIndex()
                 val fl = store.favLists().firstOrNull { it.name == favGroups[g] }
                 val l = keys.mapNotNull { byKey[it]?.firstOrNull() }
                 if (fl?.manual == true) l else l.sortedBy { it.number }
@@ -1521,7 +1539,7 @@ class PlayerActivity : Activity() {
                 g in favGroups.keys || g == G_RECENT || g == G_ALL -> {
                     prev = null
                     val ic = when (g) { G_RECENT -> R.drawable.ic_m_history; G_ALL -> R.drawable.ic_m_list; else -> R.drawable.ic_m_star }
-                    TextItem(plain(g), channelsOf(g).size.toString(), icon = ic)
+                    TextItem(plain(g), channelsOfRaw(g).size.toString(), icon = ic)
                 }
                 else -> {
                     val c = Countries.code(g)
@@ -1531,7 +1549,7 @@ class PlayerActivity : Activity() {
                         if (f.isEmpty()) n else "$f  $n"
                     } else null
                     prev = c
-                    TextItem(if (c == "?" || c == "XXX") g.trim() else Countries.bare(g), channelsOf(g).size.toString(), header)
+                    TextItem(if (c == "?" || c == "XXX") g.trim() else Countries.bare(g), channelsOfRaw(g).size.toString(), header)
                 }
             }
         }
@@ -1549,7 +1567,7 @@ class PlayerActivity : Activity() {
         channelAdapter.favorites = store.favorites()
         viewingGroup = playingGroup.takeIf { it in groupKeys } ?: G_ALL
         // läuft der Sender gar nicht in dieser Gruppe (z. B. per Zifferntaste gewählt) → seine eigene Gruppe zeigen
-        current?.let { c -> if (channelsOf(viewingGroup).none { it.url == c.url }) viewingGroup = c.group.takeIf { it in groupKeys } ?: G_ALL }
+        current?.let { c -> if (channelsOfRaw(viewingGroup).none { it.url == c.url }) viewingGroup = c.group.takeIf { it in groupKeys } ?: G_ALL }
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
         channelAdapter.playingUrl = current?.url
