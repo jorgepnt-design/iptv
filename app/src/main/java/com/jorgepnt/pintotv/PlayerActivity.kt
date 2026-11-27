@@ -195,7 +195,7 @@ class PlayerActivity : Activity() {
                     player.stop(); current = null; playlist = null
                     showStatus("Keine Playlist vorhanden.\nOK oder Menü drücken → Playlists")
                 }
-                else if (p.id != playlist?.id || resultCode == RESULT_OK) load(resultCode == RESULT_OK)
+                else if (p.id != playlist?.id || resultCode == RESULT_OK) load(resultCode == RESULT_OK, stay = current != null)
             }
             REQ_GUIDE, REQ_MULTI -> {
                 val url = data?.getStringExtra("url") ?: return
@@ -347,6 +347,7 @@ class PlayerActivity : Activity() {
     /** stay = im Kanal-Bildschirm bleiben und nur die Senderliste umstellen (laufender Sender spielt weiter) */
     private fun load(force: Boolean, stay: Boolean = false) {
         val p = store.active() ?: return
+        val samePl = playlist?.id == p.id
         if (force) Vod.clearCache(this)
         playlist = p
         loading = true
@@ -370,7 +371,7 @@ class PlayerActivity : Activity() {
             buildGroups()
             if (stay) {
                 if (overlay.visibility != View.VISIBLE) showOverlay()
-                viewingGroup = groupKeys.getOrElse(specialCount) { G_ALL }
+                viewingGroup = viewingGroup.takeIf { samePl && it in groupKeys && !isSpecial(it) } ?: groupKeys.getOrElse(specialCount) { G_ALL }
                 refreshGroupCounts()
                 channelAdapter.items = channelsOf(viewingGroup)
                 channelAdapter.playingUrl = current?.url
@@ -468,7 +469,7 @@ class PlayerActivity : Activity() {
 
     /** direkt auf eine andere Playlist umschalten (vorgeladen → sofort) */
     private fun openPlaylist(id: String) {
-        if (id == playlist?.id) { switchPlaylist(); return }
+        if (id == playlist?.id) { toast("„${playlist?.name}“ ist schon gewählt"); return }
         if (store.playlists().none { it.id == id }) return
         store.activeId = id
         load(false, stay = true)
@@ -668,8 +669,7 @@ class PlayerActivity : Activity() {
                 val p = pls[w]
                 if (p.id == playlist?.id) return@setItems
                 store.activeId = p.id
-                hideOverlay()
-                load(false)
+                load(false, stay = true)
             }.show()
     }
 
@@ -1682,7 +1682,7 @@ class PlayerActivity : Activity() {
             item == "Favoritenlisten" -> manageFavLists()
             item == "Gruppen / Länder" -> manageGroups()
             item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
-            item == "Aktualisieren" -> { hideOverlay(); load(true) }
+            item == "Aktualisieren" -> load(true, stay = current != null)
             item.startsWith("Stream-Format") -> chooseStreamFormat(i)
             item == "👥 Verwaltung" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java).putExtra("people", true), REQ_PLAYLIST) }
             item == "🔊 Ton-Synchronisierung" -> { hideOverlay(); ui.postDelayed({ audioSyncDialog() }, 150) }
