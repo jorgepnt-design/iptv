@@ -1,6 +1,6 @@
 {
-  "versionCode": 88,
-  "versionName": "2.76",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/634057603650337a00ef3168c0331fa6e79b57d7/pintotv.apk",
-  "notes": "• Multi-View: „Sender wechseln“ öffnet direkt die Senderliste mit dem laufenden Sender markiert\n• Multi-View: Jedes Fenster zeigt oben links dauerhaft, aus welcher Playlist der Sender kommt (eigene Farbe je Playlist)"
+  "versionCode": 89,
+  "versionName": "2.77",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/8f50dd32cfcc3fdb91fe4ddbefdf48330eb33f4b/pintotv.apk",
+  "notes": "• Absturz „Bedienung hing“ beim Öffnen der Senderliste behoben (große Playlist, Sortierung nach Name)\n• Senderliste öffnet schneller"
 }
