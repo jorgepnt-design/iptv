@@ -140,5 +140,9 @@ class VodTest {
         org.junit.Assert.assertEquals("TR", Countries.code("(TR-) Diziler"))
         org.junit.Assert.assertEquals("Française Série", Countries.bare("(S|FR) Française Série"))
         org.junit.Assert.assertEquals("DE", Countries.code("DE | SKY | Sport"))
+        org.junit.Assert.assertEquals("DK", Countries.code("DANSKE FILM"))
+        org.junit.Assert.assertEquals("NO", Countries.code("NORGE BARN"))
+        org.junit.Assert.assertEquals("SE", Countries.code("SVENSKA AUDIOBOOKS"))
+        org.junit.Assert.assertEquals("DE", Countries.code("DE: KINO HIGHLIGHTS 2026"))
     }
 }

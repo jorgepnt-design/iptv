@@ -371,6 +371,15 @@ class PlayerActivity : Activity() {
             hideLoading()
             hideStatus()
             store.migrateFavorites(p.id, Repo.channels)
+            // neue Playlist ohne eigene Länderauswahl: dieselben Länder wie bei den anderen Playlists
+            if (!store.hasHidden(p.id)) {
+                val groups = Repo.groups
+                val allowed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Repo.globalCountries(this@PlayerActivity, exclude = p.id) }
+                if (allowed != null) {
+                    store.setHiddenGroups(p.id, groups.filter { val c = Countries.code(it); c != "?" && c !in allowed }.toSet())
+                    toast("Länder wie bei deinen anderen Playlists übernommen")
+                }
+            }
             buildGroups()
             if (stay) {
                 if (overlay.visibility != View.VISIBLE) showOverlay()

@@ -167,7 +167,8 @@ class VodActivity : Activity() {
                 }
             }
             liveAllowed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                res.associate { (p, _) -> p.id to Repo.liveCountries(this@VodActivity, p.id) }
+                val global = Repo.globalCountries(this@VodActivity)
+                res.associate { (p, _) -> p.id to (Repo.liveCountries(this@VodActivity, p.id) ?: global) }
             }
             loading(null)
             parts = res

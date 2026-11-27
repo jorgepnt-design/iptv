@@ -67,7 +67,15 @@ object Countries {
         "deutsch" to "DE", "germany" to "DE", "german" to "DE", "portug" to "PT", "brasil" to "BR", "brazil" to "BR",
         "españa" to "ES", "spain" to "ES", "france" to "FR", "français" to "FR", "francais" to "FR", "italia" to "IT", "italy" to "IT", "turk" to "TR",
         "türk" to "TR", "poland" to "PL", "polska" to "PL", "österreich" to "AT", "austria" to "AT", "schweiz" to "CH",
-        "swiss" to "CH", "england" to "UK", "united kingdom" to "UK", "arab" to "AR"
+        "swiss" to "CH", "england" to "UK", "united kingdom" to "UK", "arab" to "AR",
+        "danske" to "DK", "dansk" to "DK", "denmark" to "DK", "norge" to "NO", "norsk" to "NO", "norway" to "NO",
+        "svensk" to "SE", "sverige" to "SE", "sweden" to "SE", "suomi" to "FI", "finland" to "FI",
+        "nederland" to "NL", "dutch" to "NL", "holland" to "NL", "belgi" to "BE", "greek" to "GR", "greece" to "GR",
+        "romania" to "RO", "român" to "RO", "russia" to "RU", "русск" to "RU", "hrvat" to "HR", "croatia" to "HR",
+        "srbija" to "RS", "serbia" to "RS", "shqip" to "AL", "albania" to "AL", "hindi" to "IN", "pakistan" to "PK",
+        "česk" to "CZ", "czech" to "CZ", "magyar" to "HU", "hungar" to "HU", "bulgar" to "BG", "canada" to "CA",
+        "mexic" to "MX", "latino" to "LAT", "kurd" to "KU", "persian" to "IR", "farsi" to "IR", "israel" to "IL",
+        "ukrain" to "UA", "bosn" to "BA", "macedon" to "MK", "sloven" to "SI", "africa" to "AF", "united states" to "US"
     )
 
     /** Erwachsenen-Inhalte erkennen – eigene „Länder“-Gruppe, damit man sie gezielt ein-/ausblenden kann */
@@ -326,6 +334,9 @@ class Store(ctx: Context) {
         sp.edit().remove("allowc_$key").commit()
         return true
     }
+
+    /** wurde für diese Playlist/diesen Bereich schon einmal eine Auswahl gespeichert? */
+    fun hasHidden(pid: String) = sp.getStringSet("hidden_$pid", null)?.isNotEmpty() == true || sp.contains("allowc_$pid")
 
     fun hiddenGroups(pid: String): Set<String> = sp.getStringSet("hidden_$pid", emptySet())!!.toSet()
     fun setHiddenGroups(pid: String, groups: Set<String>) = sp.edit().putStringSet("hidden_$pid", groups).commit()
@@ -885,6 +896,18 @@ object Repo {
         val all = groups.map { Countries.code(it) }.toSet()
         val vis = groups.filter { it !in hidden }.map { Countries.code(it) }.toSet()
         return if (vis.containsAll(all)) null else vis
+    }
+
+    /** Länder, die du im Live-TV gewählt hast – über alle Playlists zusammen (null = nirgends eingeschränkt).
+     *  Gilt für Playlists ohne eigene Auswahl, damit überall dieselben Länder erscheinen. */
+    fun globalCountries(ctx: Context, exclude: String? = null): Set<String>? {
+        val out = HashSet<String>()
+        var any = false
+        Store(ctx).playlists().forEach { p ->
+            if (p.id == exclude) return@forEach
+            liveCountries(ctx, p.id)?.let { any = true; out.addAll(it) }
+        }
+        return if (any) out else null
     }
 
     /** Filme/Serien-Einträge einer M3U-Playlist */
