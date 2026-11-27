@@ -92,6 +92,9 @@ class PlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_player)
+        // Ladeanzeige und Hinweis-Chip immer über der Senderliste/dem Menü zeigen (sonst sieht man beim Aktualisieren nichts)
+        findViewById<View>(R.id.loadPane).translationZ = 60f
+        findViewById<View>(R.id.epgChip).translationZ = 60f
         store = Store(this)
 
         playerView = findViewById(R.id.playerView)
@@ -378,6 +381,7 @@ class PlayerActivity : Activity() {
                 channelList.scrollToPosition(0)
                 focusAt(groupList, groupKeys.indexOf(PL + p.id).coerceAtLeast(0))
                 armOverlayTimer()
+                if (force) toast("„${p.name}“ aktualisiert: ${Repo.channels.size} Sender" + if (store.playlists().size > 1) " – andere Playlists, Filme und Serien folgen im Hintergrund" else " – Filme und Serien folgen im Hintergrund")
                 loadEpg(force)
                 return@launch
             }
