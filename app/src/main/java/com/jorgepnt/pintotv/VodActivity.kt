@@ -264,21 +264,17 @@ class VodActivity : Activity() {
         if (resumeCache.isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen"); nums.add(resumeCache.size.toString()); heads.add(null) }
         if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis"); nums.add(searchResults.size.toString()); heads.add(null) }
         if (newCache.isNotEmpty()) { keys.add("#new"); labels.add(if (multi) "🆕 Zuletzt hinzugefügt (alle)" else "🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()); heads.add(null) }
+        // direkt darunter: Neuheiten je Playlist
+        if (multi) parts.forEach { (p, _) ->
+            val nl = newByPl[p.id].orEmpty()
+            if (nl.isNotEmpty()) { keys.add("#new:" + p.id); labels.add("🆕 Zuletzt hinzugefügt (${p.name})"); nums.add(nl.size.toString()); heads.add(null) }
+        }
         keys.add(""); labels.add(if (multi) "Alle (${parts.joinToString(" + ") { it.first.name }})" else "Alle")
         nums.add((if (filtering) counts.values.sum() else visibleItems.size).toString()); heads.add(null)
         var lastPl: String? = null
         catRows.forEach { (k, name, p) ->
             val n = counts[k] ?: 0
             if (filtering && n == 0) return@forEach   // beim Filtern leere Kategorien ausblenden
-            if (multi && p.id != lastPl) {
-                // je Playlist zuerst ihre eigenen Neuheiten
-                val nl = newByPl[p.id].orEmpty()
-                if (nl.isNotEmpty()) {
-                    keys.add("#new:" + p.id); labels.add("🆕 Zuletzt hinzugefügt · ${p.name}"); nums.add(nl.size.toString())
-                    heads.add("📡  ${p.name.uppercase()}")
-                    lastPl = p.id
-                }
-            }
             keys.add(k); labels.add(name); nums.add(n.toString())
             heads.add(if (multi && p.id != lastPl) "📡  ${p.name.uppercase()}" else null)
             lastPl = p.id
