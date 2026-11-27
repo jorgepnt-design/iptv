@@ -9,7 +9,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 
-class TextItem(val label: String, val count: String = "", val header: String? = null)
+class TextItem(val label: String, val count: String = "", val header: String? = null, val icon: Int = 0)
 
 /** Liste für Menü, Gruppen und Playlists */
 class TextAdapter(
@@ -24,6 +24,7 @@ class TextAdapter(
         val label: TextView = v.findViewById(R.id.label)
         val count: TextView = v.findViewById(R.id.count)
         val header: TextView = v.findViewById(R.id.header)
+        val icon: android.widget.ImageView = v.findViewById(R.id.icon)
     }
 
     var items: List<TextItem> = emptyList()
@@ -45,6 +46,7 @@ class TextAdapter(
         val it = items[pos]
         if (wrap) { h.label.maxLines = 4; h.label.ellipsize = null; h.label.textSize = 15f }
         h.label.text = it.label
+        if (it.icon != 0) { h.icon.setImageResource(it.icon); h.icon.visibility = View.VISIBLE } else h.icon.visibility = View.GONE
         h.count.text = it.count
         // Zahl als kleines Kästchen, Pfeile/leer ohne Kästchen
         h.count.visibility = if (it.count.isEmpty()) View.GONE else View.VISIBLE

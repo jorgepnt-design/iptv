@@ -552,6 +552,39 @@ class PlayerActivity : Activity() {
         "Stream-Format: " + if (store.streamFormat == "ts") "TS" else "HLS", "🔊 Ton-Synchronisierung", "👥 Verwaltung", "Nach Updates suchen", "Beenden"
     )
 
+    /** Text ohne vorangestellte Zeichen wie „★ “, „🎬 “, „● “ (dafür gibt es jetzt Symbole) */
+    private fun plain(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}]+"), "")
+
+    /** Menüzeilen mit Linien-Symbolen */
+    private fun menuTextItems() = menuItems.map { m ->
+        val ic = when {
+            m == "TV-Guide" -> R.drawable.ic_m_tv
+            m == "Filme" -> R.drawable.ic_m_movie
+            m == "Serien" -> R.drawable.ic_m_series
+            m == "Multi-View" -> R.drawable.ic_m_grid
+            m == "Suche" -> R.drawable.ic_m_search
+            m.startsWith("Sortierung") -> R.drawable.ic_m_sort
+            m == "Favoritenlisten" -> R.drawable.ic_m_star
+            m == "Gruppen / Länder" -> R.drawable.ic_m_globe
+            m == "Playlists" -> R.drawable.ic_m_playlist
+            m == "Aktualisieren" -> R.drawable.ic_m_refresh
+            m.contains("Zurück zu Live") -> R.drawable.ic_m_play
+            m.contains("Pause") -> R.drawable.ic_m_pause
+            m.contains("Aufnahme beenden") -> R.drawable.ic_m_stop
+            m.contains("Aufnahme starten") -> R.drawable.ic_m_record
+            m == "Aufnahmen" -> R.drawable.ic_m_dvr
+            m == "Aufnahme-Speicherort" -> R.drawable.ic_m_folder
+            m.startsWith("Aufnahme-Qualität") -> R.drawable.ic_m_tune
+            m.startsWith("Stream-Format") -> R.drawable.ic_m_swap
+            m.contains("Ton-Synchronisierung") -> R.drawable.ic_m_volume
+            m.contains("Verwaltung") -> R.drawable.ic_m_people
+            m == "Nach Updates suchen" -> R.drawable.ic_m_download
+            m == "Beenden" -> R.drawable.ic_m_power
+            else -> 0
+        }
+        TextItem(plain(m), icon = ic)
+    }
+
     private fun initLists() {
         menuAdapter = TextAdapter(onClick = { onMenu(it) })
         menuList.layoutManager = LinearLayoutManager(this)
@@ -913,7 +946,7 @@ class PlayerActivity : Activity() {
             .setTitle("Aufnahme-Qualität")
             .setSingleChoiceItems(opts, sp.getInt("recQ", 0)) { d, w ->
                 sp.edit().putInt("recQ", w).apply(); d.dismiss()
-                menuAdapter.items = menuItems.map { TextItem(it) }; focusAt(menuList, menuPos)
+                menuAdapter.items = menuTextItems(); focusAt(menuList, menuPos)
                 toast("Gilt für Sender mit mehreren Qualitätsstufen (HLS). Sonst beim Aufnehmen die Senderversion (SD/HD/FHD) wählen.")
             }.show()
     }
@@ -1217,7 +1250,7 @@ class PlayerActivity : Activity() {
                         val g = "★ ${fl.name}"
                         val first = channelsOf(g).firstOrNull() ?: run { toast("Die Liste ist leer"); reopen(a); return@setItems }
                         if (overlay.visibility != View.VISIBLE) showOverlay()
-                        menuPane.visibility = View.GONE
+                        setMenu(false)
                         showGroup(g); focusChannel(0)
                         ui.postDelayed({ startMove(channelAdapter.items.firstOrNull() ?: first) }, 300)
                     }
@@ -1455,7 +1488,7 @@ class PlayerActivity : Activity() {
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
         toast(msg)
-        if (overlay.visibility == View.VISIBLE) { menuPane.visibility = View.GONE; focusGroup() }
+        if (overlay.visibility == View.VISIBLE) { setMenu(false); focusGroup() }
     }
 
     private var pendingGroup: String? = null
@@ -1482,10 +1515,14 @@ class PlayerActivity : Activity() {
                     val p = store.playlists().firstOrNull { it.id == id }
                     val active = id == playlist?.id
                     val n = if (active) visible.size else Repo.loaded(id)?.channels?.size
-                    TextItem((if (active) "▶ " else "📡 ") + (p?.name ?: "?"), n?.toString() ?: "…")
+                    TextItem(p?.name ?: "?", n?.toString() ?: "…", icon = if (active) R.drawable.ic_m_play else R.drawable.ic_m_playlist)
                 }
-                g == G_MOVIES || g == G_SERIES -> { prev = null; TextItem(g, "›") }
-                g in favGroups.keys || g == G_RECENT || g == G_ALL -> { prev = null; TextItem(g, channelsOf(g).size.toString()) }
+                g == G_MOVIES || g == G_SERIES -> { prev = null; TextItem(plain(g), "›", icon = if (g == G_SERIES) R.drawable.ic_m_series else R.drawable.ic_m_movie) }
+                g in favGroups.keys || g == G_RECENT || g == G_ALL -> {
+                    prev = null
+                    val ic = when (g) { G_RECENT -> R.drawable.ic_m_history; G_ALL -> R.drawable.ic_m_list; else -> R.drawable.ic_m_star }
+                    TextItem(plain(g), channelsOf(g).size.toString(), icon = ic)
+                }
                 else -> {
                     val c = Countries.code(g)
                     val header = if (c != prev) {
@@ -1521,7 +1558,7 @@ class PlayerActivity : Activity() {
         if (isTouchDevice) {
             findViewById<View>(R.id.detailPane).visibility = View.GONE
             channelList.layoutParams = (channelList.layoutParams as android.widget.LinearLayout.LayoutParams).apply { width = 0; weight = 1f }
-            menuAdapter.items = menuItems.map { TextItem(it) }
+            menuAdapter.items = menuTextItems()
             menuPane.visibility = View.VISIBLE
             current?.let { showDetails(it) }
             armOverlayTimer()
@@ -1529,8 +1566,8 @@ class PlayerActivity : Activity() {
         }
         when (focus) {
             "menu" -> showMenu()
-            "groups" -> { menuPane.visibility = View.GONE; focusGroup() }
-            else -> { menuPane.visibility = View.GONE; focusChannel(channelAdapter.indexOf(current?.url)) }
+            "groups" -> { setMenu(false); focusGroup() }
+            else -> { setMenu(false); focusChannel(channelAdapter.indexOf(current?.url)) }
         }
         current?.let { showDetails(it) }
         previewOn()
@@ -1539,7 +1576,7 @@ class PlayerActivity : Activity() {
 
     /** Video als kleines Vorschaubild rechts oben in der Kanalliste */
     private fun previewOn() {
-        if (isTouchDevice) return
+        if (isTouchDevice || menuPane.visibility == View.VISIBLE) return
         val slot = findViewById<View>(R.id.previewSlot)
         val pane = findViewById<View>(R.id.detailPane)
         pane.post {
@@ -1574,7 +1611,7 @@ class PlayerActivity : Activity() {
         if (moveKey != null) stopMove()
         previewOff()
         overlay.visibility = View.GONE
-        menuPane.visibility = View.GONE
+        setMenu(false)
         ui.removeCallbacks(overlayTimeout)
         // Fernsehbild bekommt den Tastenfokus, damit nie „kein Fokus“ entsteht
         playerView.isFocusable = true
@@ -1585,15 +1622,25 @@ class PlayerActivity : Activity() {
     private fun armOverlayTimer() { ui.removeCallbacks(overlayTimeout); ui.postDelayed(overlayTimeout, 25000) }
 
     private fun showMenu() {
-        menuAdapter.items = menuItems.map { TextItem(it) }
-        menuPane.visibility = View.VISIBLE
+        menuAdapter.items = menuTextItems()
+        setMenu(true)
         overlay.visibility = View.VISIBLE
         menuPane.requestLayout()
         focusAt(menuList, 0)
         armOverlayTimer()
     }
 
-    private fun hideMenu() { menuPane.visibility = View.GONE }
+    private fun hideMenu() { setMenu(false) }
+
+    /** Menü links ein/aus. Auf dem TV ist dann kein Platz für die Infospalte:
+     *  sie wird ausgeblendet und das Bild läuft groß dahinter, statt mitten im Text zu stehen. */
+    private fun setMenu(show: Boolean) {
+        if (menuPane.visibility == (if (show) View.VISIBLE else View.GONE)) return
+        menuPane.visibility = if (show) View.VISIBLE else View.GONE
+        if (isTouchDevice) return
+        findViewById<View>(R.id.detailPane).visibility = if (show) View.GONE else View.VISIBLE
+        if (overlay.visibility == View.VISIBLE) { if (show) previewOff() else previewOn() }
+    }
 
     private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(specialCount))
 
@@ -1672,7 +1719,7 @@ class PlayerActivity : Activity() {
             item == "Serien" -> openVod(true)
             item.startsWith("Sortierung") -> {
                 store.sortByName = !store.sortByName
-                menuAdapter.items = menuItems.map { TextItem(it) }
+                menuAdapter.items = menuTextItems()
                 focusAt(menuList, i)
                 channelAdapter.items = channelsOf(viewingGroup)
                 toast(if (store.sortByName) "Sender nach Name sortiert" else "Sender nach Nummer sortiert")
@@ -1690,14 +1737,14 @@ class PlayerActivity : Activity() {
             item == "⏸ Pause (Timeshift)" -> { hideOverlay(); ui.postDelayed({ togglePause() }, 200) }
             item == "▶ Zurück zu Live" -> { hideOverlay(); exitTimeshift(restart = true); toast("Live") }
             item == "● Aufnahme starten" -> { hideOverlay(); ui.postDelayed({ startRecording() }, 300) }
-            item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuItems.map { TextItem(it) } }
+            item == "■ Aufnahme beenden" -> { stopRecording(); menuAdapter.items = menuTextItems() }
             item == "Aufnahmen" -> showRecordings()
             item == "Aufnahme-Speicherort" -> chooseRecordDir()
             item.startsWith("Aufnahme-Qualität") -> chooseRecQuality(i)
             item.startsWith("Version beim Aufnehmen fragen") -> {
                 val sp = getSharedPreferences("pintotv", MODE_PRIVATE)
                 sp.edit().putBoolean("recAskVersion", !sp.getBoolean("recAskVersion", false)).apply()
-                menuAdapter.items = menuItems.map { TextItem(it) }; focusAt(menuList, i)
+                menuAdapter.items = menuTextItems(); focusAt(menuList, i)
             }
             item == "Beenden" -> finish()
         }
@@ -1717,7 +1764,7 @@ class PlayerActivity : Activity() {
                 if (f == store.streamFormat) return@setSingleChoiceItems
                 if (Recorder.active) stopRecording()
                 store.streamFormat = f
-                menuAdapter.items = menuItems.map { TextItem(it) }
+                menuAdapter.items = menuTextItems()
                 if (playlist?.type == "xtream") {
                     toast("Stream-Format: ${if (w == 0) "TS" else "HLS"} – Senderliste wird neu geladen")
                     hideOverlay(); load(true)
@@ -1772,7 +1819,7 @@ class PlayerActivity : Activity() {
         viewingGroup = key
         refreshGroupCounts()
         channelAdapter.items = searchResults
-        menuPane.visibility = View.GONE
+        setMenu(false)
         if (searchResults.isEmpty()) { toast("Nichts gefunden für „$q“"); focusGroup() } else focusChannel(0)
     }
 
