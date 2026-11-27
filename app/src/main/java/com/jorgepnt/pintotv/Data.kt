@@ -138,7 +138,7 @@ object Countries {
 }
 
 /** Einstellungen, Playlists, Favoriten, Verlauf */
-class Store(ctx: Context) {
+class Store(private val ctx: Context) {
     private val sp = ctx.getSharedPreferences("pintotv", Context.MODE_PRIVATE)
 
     /** komplette Sicherung aller Einstellungen als JSON */
@@ -162,7 +162,8 @@ class Store(ctx: Context) {
     fun describe(json: String): String = try {
         val prefs = JSONObject(json).getJSONObject("prefs")
         val pl = prefs.optJSONObject("playlists")?.optString("v")?.let { JSONArray(it).length() } ?: 0
-        val fl = prefs.optJSONObject("favlists")?.optString("v")?.let { JSONArray(it) }
+        val fl = (prefs.optJSONObject("favlists") ?: prefs.keys().asSequence().firstOrNull { it.startsWith("favlists_") }?.let { prefs.optJSONObject(it) })
+            ?.optString("v")?.let { JSONArray(it) }
         val favs = fl?.let { a -> (0 until a.length()).sumOf { a.getJSONObject(it).getJSONArray("k").length() } } ?: 0
         "$pl Playlist${if (pl == 1) "" else "s"}, ${fl?.length() ?: 1} Favoritenliste(n) mit $favs Sendern, Gruppen-/Länderauswahl und Einstellungen"
     } catch (e: Exception) { "Einstellungen" }
@@ -204,13 +205,21 @@ class Store(ctx: Context) {
 
     class FavList(val name: String, val keys: MutableSet<String>, var manual: Boolean = false)
 
-    fun favLists(): MutableList<FavList> {
-        val raw = sp.getString("favlists", null)
-        if (raw == null) {
-            // Umzug von der früheren einzelnen Liste
-            val old = sp.getStringSet("favs", emptySet())!!.toMutableSet()
-            return mutableListOf(FavList("Favoriten", old))
+    /** Favoritenlisten gehören jetzt zu einer Playlist (Standard: die aktive) */
+    private fun favScope(pid: String?) = pid ?: active()?.id ?: ""
+
+    fun favLists(pid: String? = null): MutableList<FavList> {
+        val scope = favScope(pid)
+        var raw = sp.getString("favlists_$scope", null)
+        if (raw == null && scope.isNotEmpty()) {
+            migrateGlobalFavs()
+            raw = sp.getString("favlists_$scope", null)
         }
+        if (raw == null) return mutableListOf(FavList("Favoriten", mutableSetOf()))
+        return parseFav(raw)
+    }
+
+    private fun parseFav(raw: String): MutableList<FavList> {
         val a = JSONArray(raw)
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i); val k = o.getJSONArray("k")
@@ -218,10 +227,49 @@ class Store(ctx: Context) {
         }.toMutableList()
     }
 
-    fun saveFavLists(l: List<FavList>) {
+    private fun favJson(l: List<FavList>): String {
         val a = JSONArray()
         l.forEach { f -> a.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList())).put("m", f.manual)) }
-        sp.edit().putString("favlists", a.toString()).commit()
+        return a.toString()
+    }
+
+    fun saveFavLists(l: List<FavList>, pid: String? = null) {
+        sp.edit().putString("favlists_${favScope(pid)}", favJson(l)).commit()
+    }
+
+    /** Listen aller Playlists, gleichnamige zusammengeführt (zum Senden an andere Geräte) */
+    fun allFavLists(): List<FavList> {
+        val m = LinkedHashMap<String, FavList>()
+        playlists().forEach { p -> favLists(p.id).forEach { f ->
+            m.getOrPut(f.name) { FavList(f.name, mutableSetOf(), f.manual) }.keys.addAll(f.keys)
+        } }
+        return m.values.toList()
+    }
+
+    /** Frühere gemeinsame Favoriten (für alle Playlists) der Playlist zuordnen, zu der sie am besten passen.
+     *  Die anderen Playlists starten mit leeren Listen. */
+    private fun migrateGlobalFavs() {
+        val raw = sp.getString("favlists", null)
+        val old = if (raw != null) parseFav(raw) else {
+            val o = sp.getStringSet("favs", null) ?: return
+            mutableListOf(FavList("Favoriten", o.toMutableSet()))
+        }
+        val keys = old.flatMap { it.keys }.toSet()
+        val pls = playlists()
+        if (pls.isEmpty()) return
+        var best = active()?.id ?: pls.first().id
+        var bestHits = -1
+        pls.forEach { p ->
+            val f = java.io.File(ctx.filesDir, "ch_${p.id}.json")
+            val hits = try {
+                if (!f.exists()) 0 else {
+                    val a = JSONObject(f.readText()).getJSONArray("ch")
+                    (0 until a.length()).count { a.getJSONArray(it).getString(0).trim().lowercase() in keys }
+                }
+            } catch (e: Exception) { 0 }
+            if (hits > bestHits) { bestHits = hits; best = p.id }
+        }
+        sp.edit().putString("favlists_$best", favJson(old)).remove("favlists").remove("favs").commit()
     }
 
     /** alle Favoriten aus allen Listen (für den Stern in der Liste) */
@@ -232,9 +280,9 @@ class Store(ctx: Context) {
     /** alte Favoriten (gespeichert über die Stream-Adresse) übernehmen */
     fun migrateFavorites(pid: String, channels: List<Channel>) {
         val old = sp.getStringSet("fav_$pid", null) ?: return
-        val l = favLists()
+        val l = favLists(pid)
         channels.filter { it.url in old }.forEach { l[0].keys.add(favKey(it)) }
-        saveFavLists(l)
+        saveFavLists(l, pid)
         sp.edit().remove("fav_$pid").commit()
     }
 

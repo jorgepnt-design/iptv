@@ -528,7 +528,7 @@ class PlaylistActivity : Activity() {
                 "Alles wie bei mir",
                 "Genau auswählen: Playlists, Gruppen (TV, Filme, Serien), Favoriten …"
             ) + templates().map { "📋 Vorlage: ${it.optString("n")}" }).toTypedArray()) { _, w ->
-                val all = Pick(store.playlists().map { it.id }.toSet(), null, store.favLists().map { it.name }.toSet())
+                val all = Pick(store.playlists().map { it.id }.toSet(), null, store.allFavLists().map { it.name }.toSet())
                 when (w) {
                     0 -> askCodeThen(all)
                     1 -> pickPlaylists(code, all)
@@ -735,7 +735,7 @@ class PlaylistActivity : Activity() {
     }
 
     private fun pickFavs(code: String, pick: Pick) {
-        val fl = store.favLists().filter { it.keys.isNotEmpty() }
+        val fl = store.allFavLists().filter { it.keys.isNotEmpty() }
         if (fl.isEmpty()) { finishPick(pick); return }
         val checked = BooleanArray(fl.size) { pick.template == null || fl[it].name in pick.favLists }
         Dialogs.multiChoice(this, "Welche Favoritenlisten?", fl.map { "★ ${it.name}  (${it.keys.size} Sender)" }.toTypedArray(), checked) {
@@ -760,7 +760,9 @@ class PlaylistActivity : Activity() {
         if (store.activeId !in pick.playlists) pick.playlists.firstOrNull()?.let { prefs.put("active", JSONObject().put("t", "s").put("v", it)) }
         // Favoritenlisten
         val favs = JSONArray()
-        store.favLists().filter { it.name in pick.favLists }.forEach { f ->
+        // Favoriten gehen als gemeinsame Liste mit; das andere Gerät ordnet sie seiner passenden Playlist zu
+        prefs.keys().asSequence().toList().filter { it.startsWith("favlists_") }.forEach { prefs.remove(it) }
+        store.allFavLists().filter { it.name in pick.favLists }.forEach { f ->
             favs.put(JSONObject().put("n", f.name).put("k", JSONArray(f.keys.toList())).put("m", f.manual))
         }
         if (favs.length() == 0) favs.put(JSONObject().put("n", "Favoriten").put("k", JSONArray()))

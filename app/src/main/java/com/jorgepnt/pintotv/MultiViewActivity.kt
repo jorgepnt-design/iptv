@@ -472,7 +472,7 @@ class MultiViewActivity : Activity() {
         val byKey = src.channels.groupBy { favKey(it) }
         val hidden = store.hiddenGroups(src.playlist.id)
         val groups = ArrayList<Pair<String, List<Channel>>>()
-        store.favLists().forEach { fl ->
+        store.favLists(src.playlist.id).forEach { fl ->
             val l = fl.keys.mapNotNull { byKey[it]?.firstOrNull() }.sortedBy { it.number }
             if (l.isNotEmpty()) groups.add("★ ${fl.name}" to l)
         }
