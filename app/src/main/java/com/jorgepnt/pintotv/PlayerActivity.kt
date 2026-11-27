@@ -43,6 +43,8 @@ class PlayerActivity : Activity() {
         const val G_RECENT = "Zuletzt gesehen"
         const val G_MENU = "☰ Menü"
         const val G_SWITCH = "⇄ Playlist wechseln"
+        /** Gruppen-Schlüssel für eine Playlist-Zeile: PL + id */
+        const val PL = "\u0002pl:"
         const val G_MOVIES = "🎬 Filme"
         const val G_SERIES = "📺 Serien"
         const val G_ALL = "Alle Kanäle"
@@ -348,7 +350,7 @@ class PlayerActivity : Activity() {
         playlist = p
         loading = true
         hideStatus()
-        showLoading(if (force) "„${p.name}“ wird aktualisiert" else "„${p.name}“ wird geladen", "Starte …", -1)
+        showLoading(if (force && store.playlists().size > 1) "Alle Playlists werden aktualisiert – zuerst „${p.name}“" else if (force) "„${p.name}“ wird aktualisiert" else "„${p.name}“ wird geladen", "Starte …", -1)
         scope.launch {
             try {
                 Repo.loadChannels(this@PlayerActivity, p, store.streamFormat, force) { step, pct ->
@@ -412,7 +414,52 @@ class PlayerActivity : Activity() {
                 if (e is OutOfMemoryError) toast("TV-Programm zu groß für den Speicher – wird ohne Beschreibungen geladen")
                 else toast("TV-Programm nicht verfügbar: ${e.message}")
             }
+            preloadAll(force)
         }
+    }
+
+    private var bgJob: kotlinx.coroutines.Job? = null
+
+    /** alle anderen Playlists (Sender, TV-Programm) und Filme/Serien aller Playlists im Hintergrund laden */
+    private fun preloadAll(force: Boolean) {
+        if (!force && bgJob?.isActive == true) return
+        bgJob?.cancel()
+        val chip = findViewById<TextView>(R.id.epgChip)
+        val since = System.currentTimeMillis() - 60_000
+        bgJob = scope.launch {
+            val pls = store.playlists()
+            if (pls.isEmpty()) return@launch
+            val failed = ArrayList<String>()
+            fun show(t: String) { if (pls.size > 1 || force) { chip.visibility = View.VISIBLE; chip.text = t } }
+            for (p in pls) {
+                if (p.id == playlist?.id) continue
+                try {
+                    show("${p.name}: Sender werden geladen …")
+                    val l = Repo.preload(this@PlayerActivity, p, store.streamFormat, force)
+                    try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force) } catch (_: Throwable) { }
+                } catch (e: Exception) { failed.add(p.name) }
+            }
+            for (p in pls) for (series in listOf(false, true)) {
+                try {
+                    show("${p.name}: ${if (series) "Serien" else "Filme"} werden geladen …")
+                    if (Vod.prefetch(this@PlayerActivity, p, series, force, since)) kotlinx.coroutines.delay(1500) // Anbieter nicht überlasten
+                } catch (e: Exception) { if (p.name !in failed) failed.add(p.name + if (series) " (Serien)" else " (Filme)") }
+            }
+            chip.visibility = View.GONE
+            if (force) toast(if (failed.isEmpty()) "Alle Playlists aktualisiert (TV, Filme, Serien)" else "Aktualisiert – Probleme bei: ${failed.joinToString()}")
+        }
+    }
+
+    private fun isSpecial(g: String) = g.startsWith(PL) || g == G_SWITCH || g == G_MOVIES || g == G_SERIES
+    private val specialCount get() = groupKeys.count { isSpecial(it) }
+
+    /** direkt auf eine andere Playlist umschalten (vorgeladen → sofort) */
+    private fun openPlaylist(id: String) {
+        if (id == playlist?.id) { switchPlaylist(); return }
+        if (store.playlists().none { it.id == id }) return
+        store.activeId = id
+        hideOverlay()
+        load(false)
     }
 
     private var hidden: Set<String> = emptySet()
@@ -426,7 +473,7 @@ class PlayerActivity : Activity() {
         hidden = store.hiddenGroups(pid)
         visible = if (hidden.isEmpty()) Repo.channels else Repo.channels.filter { it.group !in hidden }
         favGroups = store.favLists().associate { "★ ${it.name}" to it.name }
-        groupKeys = listOf(G_SWITCH, G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + orderedGroups(pid).filter { it !in hidden }
+        groupKeys = store.playlists().map { PL + it.id }.ifEmpty { listOf(G_SWITCH) } + listOf(G_MOVIES, G_SERIES) + favGroups.keys.toList() + listOf(G_RECENT, G_ALL) + orderedGroups(pid).filter { it !in hidden }
     }
 
     private fun channelsOf(g: String): List<Channel> {
@@ -499,15 +546,19 @@ class PlayerActivity : Activity() {
         menuList.itemAnimator = null
 
         groupAdapter = TextAdapter(
-            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { it !in specialGroups }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
+            onFocus = { pos -> groupKeys.getOrNull(pos)?.takeIf { !isSpecial(it) }?.let { g -> ui.removeCallbacks(showGroupTask); pendingGroup = g; ui.postDelayed(showGroupTask, 120) } },
             onClick = { pos ->
                 val g = groupKeys.getOrNull(pos)
                 if (g == G_MENU) showMenu()
                 else if (g == G_SWITCH) switchPlaylist()
+                else if (g != null && g.startsWith(PL)) openPlaylist(g.removePrefix(PL))
                 else if (g == G_MOVIES || g == G_SERIES) openVod(g == G_SERIES)
                 else { g?.let { showGroup(it) }; focusChannel(-1) }
             },
-            onLongClick = { pos -> if (groupKeys.getOrNull(pos) == G_RECENT) confirmClearRecents() },
+            onLongClick = { pos ->
+                val g = groupKeys.getOrNull(pos)
+                if (g == G_RECENT) confirmClearRecents() else if (g != null && g.startsWith(PL)) switchPlaylist()
+            },
             wrap = true
         )
         groupList.layoutManager = LinearLayoutManager(this)
@@ -1083,7 +1134,7 @@ class PlayerActivity : Activity() {
         }
         val oldView = viewingGroup
         buildGroups()
-        if (viewingGroup !in groupKeys || viewingGroup in specialGroups) viewingGroup = groupKeys.getOrElse(specialGroups.size) { G_ALL }
+        if (viewingGroup !in groupKeys || isSpecial(viewingGroup)) viewingGroup = groupKeys.getOrElse(specialCount) { G_ALL }
         if (playingGroup !in groupKeys) playingGroup = G_ALL
         refreshGroupCounts()
         channelAdapter.items = channelsOf(viewingGroup)
@@ -1413,6 +1464,14 @@ class PlayerActivity : Activity() {
             when {
                 g == G_MENU -> { prev = null; TextItem(G_MENU, "›") }
                 g == G_SWITCH -> { prev = null; TextItem("⇄ Playlist: ${playlist?.name ?: "–"}", "") }
+                g.startsWith(PL) -> {
+                    prev = null
+                    val id = g.removePrefix(PL)
+                    val p = store.playlists().firstOrNull { it.id == id }
+                    val active = id == playlist?.id
+                    val n = if (active) visible.size else Repo.loaded(id)?.channels?.size
+                    TextItem((if (active) "▶ " else "📡 ") + (p?.name ?: "?"), n?.toString() ?: "…")
+                }
                 g == G_MOVIES || g == G_SERIES -> { prev = null; TextItem(g, "›") }
                 g in favGroups.keys || g == G_RECENT || g == G_ALL -> { prev = null; TextItem(g, channelsOf(g).size.toString()) }
                 else -> {
@@ -1524,8 +1583,7 @@ class PlayerActivity : Activity() {
 
     private fun hideMenu() { menuPane.visibility = View.GONE }
 
-    private val specialGroups = setOf(G_SWITCH, G_MOVIES, G_SERIES)
-    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(specialGroups.size))
+    private fun focusGroup() = focusAt(groupList, groupKeys.indexOf(viewingGroup).coerceAtLeast(specialCount))
 
     private fun openVod(series: Boolean) {
         if (playlist == null) return

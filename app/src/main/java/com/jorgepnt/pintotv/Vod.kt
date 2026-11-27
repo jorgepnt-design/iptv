@@ -73,9 +73,23 @@ object Vod {
                 try { writeDisk(f, fresh) } catch (_: Exception) { }
                 fresh
             }
-        } else m3uCatalog(series)
-        cache[key] = result
+        } else m3uCatalog(Repo.vodOf(p0.id), series)
+        if (result.items.isNotEmpty() || p0.type == "xtream") cache[key] = result
         result
+    }
+
+    /** Katalog vorab herunterladen und speichern, damit „Filme“/„Serien“ sofort da sind.
+     *  true = es wurde wirklich beim Anbieter abgefragt */
+    suspend fun prefetch(ctx: Context, p0: Playlist, series: Boolean, force: Boolean, since: Long = 0): Boolean = withContext(Dispatchers.IO) {
+        if (p0.type != "xtream") return@withContext false
+        val key = p0.id + if (series) ":s" else ":m"
+        val f = File(ctx.filesDir, "vod_${p0.id}_${if (series) "s" else "m"}.json")
+        if (force && f.exists() && f.lastModified() >= since) return@withContext false  // gerade erst geholt
+        if (!force && (cache.containsKey(key) || (f.exists() && System.currentTimeMillis() - f.lastModified() < DISK_AGE))) return@withContext false
+        val fresh = fetchWithRetry(ctx, p0, series, null)
+        try { writeDisk(f, fresh) } catch (_: Exception) { }
+        cache.remove(key)   // beim nächsten Öffnen frisch von der Platte
+        true
     }
 
     fun clearCache(ctx: Context? = null) {
@@ -166,8 +180,8 @@ object Vod {
         return VodCatalog(categories.filter { c -> items.any { it.categoryId == c.id } }, items)
     }
 
-    private fun m3uCatalog(series: Boolean): VodCatalog {
-        val entries = Repo.m3uVod.filter { isSeriesEntry(it) == series }
+    private fun m3uCatalog(all: List<Channel>, series: Boolean): VodCatalog {
+        val entries = all.filter { isSeriesEntry(it) == series }
         val groups = entries.map { it.group }.distinct()
         val categories = groups.mapIndexed { i, g -> VodCategory(i.toString(), g) }
         val catId = groups.withIndex().associate { it.value to it.index.toString() }

@@ -714,7 +714,9 @@ object Repo {
     }
 
     /** weitere geladene Playlists (für Multi-View) */
-    private val others = HashMap<String, Loaded>()
+    private val others = java.util.concurrent.ConcurrentHashMap<String, Loaded>()
+    /** aktive Playlist so, wie sie geladen wurde (für schnellen Wechsel zurück) */
+    @Volatile private var activeLoaded: Loaded? = null
 
     /** Senderliste einer Playlist holen, ohne die aktive Playlist zu verändern */
     fun fetch(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress?): Loaded {
@@ -798,7 +800,10 @@ object Repo {
     private var original: List<Channel> = emptyList()
 
     suspend fun loadChannels(ctx: Context, p: Playlist, format: String, force: Boolean, progress: Progress? = null) = withContext(Dispatchers.IO) {
-        val l = fetch(ctx, p, format, force, progress)
+        // schon im Hintergrund geladen → sofort umschalten
+        val l = (if (!force) others[p.id] else null) ?: fetch(ctx, p, format, force, progress)
+        activeLoaded?.let { if (it.playlist.id != p.id) others[it.playlist.id] = it }
+        activeLoaded = l
         if (playlistId != p.id) epg = emptyMap()
         Http.UA = l.ua
         Xtream.maxConnections = l.maxConnections
@@ -811,6 +816,38 @@ object Repo {
         applyCustomNumbers(ctx)
         epgUrl = l.epgUrl
         others.remove(p.id)
+    }
+
+    /** andere Playlist im Hintergrund laden (für sofortigen Wechsel und Filme/Serien) */
+    suspend fun preload(ctx: Context, p: Playlist, format: String, force: Boolean): Loaded = withContext(Dispatchers.IO) {
+        if (p.id == playlistId) activeLoaded?.let { return@withContext it }
+        if (!force) others[p.id]?.let { return@withContext it }
+        fetch(ctx, p, format, force, null).also { if (p.id != playlistId) others[p.id] = it }
+    }
+
+    /** schon geladene Playlist (aktiv oder vorgeladen) */
+    fun loaded(pid: String): Loaded? = if (pid == playlistId) activeLoaded else others[pid]
+
+    /** Filme/Serien-Einträge einer M3U-Playlist */
+    fun vodOf(pid: String): List<Channel> = if (pid == playlistId) m3uVod else others[pid]?.vod ?: emptyList()
+
+    /** TV-Programm einer anderen Playlist vorab herunterladen und speichern (nicht im Speicher halten) */
+    suspend fun prefetchEpg(ctx: Context, l: Loaded, force: Boolean) = withContext(Dispatchers.IO) {
+        val f = File(ctx.filesDir, "epg_${l.playlist.id}.bin")
+        if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < MAX_AGE) return@withContext
+        if (l.epgUrl.isBlank()) return@withContext
+        Http.threadUA.set(l.ua)
+        try {
+            val map = try {
+                Http.open(l.epgUrl, null).use { XmlTv.parse(it, l.channels) }
+            } catch (e: OutOfMemoryError) {
+                System.gc()
+                Http.open(l.epgUrl, null).use { XmlTv.parse(it, l.channels, withDesc = false) }
+            }
+            val tmp = File(f.path + ".tmp")
+            writeEpg(tmp, map)
+            tmp.renameTo(f)
+        } finally { Http.threadUA.set(null) }
     }
 
     /** aktive Playlist als Loaded */

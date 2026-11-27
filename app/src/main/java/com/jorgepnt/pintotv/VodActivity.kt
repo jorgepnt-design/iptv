@@ -29,9 +29,18 @@ class VodActivity : Activity() {
     private val scope = MainScope()
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var store: Store
-    private lateinit var playlist: Playlist
     private var series = false
-    private var catalog = VodCatalog(emptyList(), emptyList())
+    /** alle Playlists; only = nur eine davon zeigen (null = alle zusammen) */
+    private var pls: List<Playlist> = emptyList()
+    private var only: String? = null
+    /** geladene Kataloge je Playlist */
+    private var parts: List<Pair<Playlist, VodCatalog>> = emptyList()
+    /** zu welcher Playlist ein Eintrag gehört */
+    private val owner = java.util.IdentityHashMap<VodItem, Playlist>()
+    /** Playlist des gerade geöffneten Eintrags */
+    private var cur: Playlist? = null
+    private fun plOf(item: VodItem) = owner[item] ?: parts.firstOrNull()?.first ?: pls.first()
+    private fun key(p: Playlist, catId: String) = p.id + "\u0001" + catId
     private var catKeys: List<String> = emptyList()     // "" = alle, "#resume" = weiterschauen, "#search" = Suche
     private var catLabels: List<String> = emptyList()
     private var searchResults: List<VodItem> = emptyList()
@@ -46,7 +55,8 @@ class VodActivity : Activity() {
         setContentView(R.layout.activity_vod)
         store = Store(this)
         series = intent.getBooleanExtra("series", false)
-        playlist = store.active() ?: run { finish(); return }
+        pls = store.playlists()
+        if (pls.isEmpty()) { finish(); return }
         findViewById<TextView>(R.id.vodTitle).text = if (series) "Serien" else "Filme"
 
         cats = findViewById(R.id.vodCats)
@@ -108,22 +118,21 @@ class VodActivity : Activity() {
     }
 
     private fun updatePlaylistLabel() {
-        findViewById<TextView>(R.id.vodPlaylist).text = "⇄ Playlist: ${playlist.name}"
+        val v = findViewById<TextView>(R.id.vodPlaylist)
+        v.visibility = if (pls.size > 1) View.VISIBLE else View.GONE
+        v.text = "⇄ Playlist: " + (pls.firstOrNull { it.id == only }?.name ?: "Alle")
     }
 
-    /** andere Playlist für Filme/Serien wählen */
+    /** alle Playlists zusammen oder nur eine zeigen */
     private fun choosePlaylist() {
-        val pls = store.playlists()
+        val labels = listOf((if (only == null) "● " else "    ") + "Alle Playlists zusammen") +
+            pls.map { (if (it.id == only) "● " else "    ") + it.name + "   (" + (if (it.type == "xtream") "Xtream" else "M3U") + ")" }
         AlertDialog.Builder(this)
-            .setTitle("Filme/Serien aus welcher Playlist?")
-            .setItems(pls.map { (if (it.id == playlist.id) "● " else "    ") + it.name + "   (" + (if (it.type == "xtream") "Xtream" else "M3U") + ")" }.toTypedArray()) { _, w ->
-                val p = pls[w]
-                if (p.id == playlist.id) return@setItems
-                if (p.type != "xtream" && p.id != Repo.playlistId) {
-                    Toast.makeText(this, "Bei M3U-Playlists bitte zuerst im Live-TV auf „${p.name}“ wechseln", Toast.LENGTH_LONG).show()
-                    return@setItems
-                }
-                playlist = p
+            .setTitle(if (series) "Serien aus welcher Playlist?" else "Filme aus welcher Playlist?")
+            .setItems(labels.toTypedArray()) { _, w ->
+                val n = if (w == 0) null else pls[w - 1].id
+                if (n == only) return@setItems
+                only = n
                 updatePlaylistLabel()
                 searchResults = emptyList(); shownCat = null
                 gridAdapter.items = emptyList()
@@ -144,41 +153,51 @@ class VodActivity : Activity() {
     private fun load() {
         loading(if (series) "Serien werden geladen …" else "Filme werden geladen …")
         scope.launch {
-            try {
-                catalog = Vod.catalog(this@VodActivity, playlist, series) { t, p -> runOnUiThread { loading(t, p) } }
-            } catch (e: Exception) {
-                loading(null)
-                AlertDialog.Builder(this@VodActivity).setTitle("Laden fehlgeschlagen").setMessage(e.message)
-                    .setPositiveButton("Andere Playlist") { _, _ -> choosePlaylist() }
-                    .setNegativeButton("Zurück") { _, _ -> finish() }.setCancelable(false).show()
-                return@launch
+            val sel = if (only == null) pls else pls.filter { it.id == only }
+            val res = ArrayList<Pair<Playlist, VodCatalog>>()
+            val errs = ArrayList<String>()
+            for (p in sel) {
+                try {
+                    val c = Vod.catalog(this@VodActivity, p, series) { t, pc -> runOnUiThread { loading(if (sel.size > 1) "${p.name}: $t" else t, pc) } }
+                    if (c.items.isNotEmpty()) res.add(p to c)
+                } catch (e: Exception) { errs.add("${p.name}: ${e.message}") }
             }
             loading(null)
-            if (catalog.items.isEmpty()) {
+            parts = res
+            owner.clear()
+            res.forEach { (p, c) -> c.items.forEach { owner[it] = p } }
+            if (res.isEmpty()) {
                 AlertDialog.Builder(this@VodActivity)
-                    .setTitle(if (series) "Keine Serien" else "Keine Filme")
-                    .setMessage("Die Playlist „${playlist.name}“ enthält keine ${if (series) "Serien" else "Filme"}.")
-                    .setPositiveButton("Andere Playlist") { _, _ -> choosePlaylist() }
+                    .setTitle(if (errs.isNotEmpty()) "Laden fehlgeschlagen" else if (series) "Keine Serien" else "Keine Filme")
+                    .setMessage(errs.joinToString("\n\n").ifBlank { "Die Playlist enthält keine ${if (series) "Serien" else "Filme"}." })
+                    .setPositiveButton(if (pls.size > 1) "Andere Playlist" else "Nochmal") { _, _ -> if (pls.size > 1) choosePlaylist() else load() }
                     .setNegativeButton("Zurück") { _, _ -> finish() }.setCancelable(false).show()
                 return@launch
             }
+            if (errs.isNotEmpty()) Toast.makeText(this@VodActivity, "Nicht geladen – ${errs.joinToString(" · ")}", Toast.LENGTH_LONG).show()
             buildCats()
             showCat(catKeys.first())
             cats.post { cats.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
         }
     }
 
-    private val hiddenKey get() = playlist.id + if (series) ":series" else ":movies"
-    private var hidden: Set<String> = emptySet()
+    private fun hiddenKey(p: Playlist) = p.id + if (series) ":series" else ":movies"
     private var visibleItems: List<VodItem> = emptyList()
 
     private fun manageCats() {
+        if (parts.isEmpty()) return
+        if (parts.size == 1) { manageCats(parts[0].first, parts[0].second); return }
+        AlertDialog.Builder(this).setTitle("Kategorien welcher Playlist?")
+            .setItems(parts.map { it.first.name }.toTypedArray()) { _, w -> manageCats(parts[w].first, parts[w].second) }.show()
+    }
+
+    private fun manageCats(p: Playlist, catalog: VodCatalog) {
         if (catalog.categories.isEmpty()) return
         val names = catalog.categories.map { it.name }
         val countByName = catalog.categories.associate { c -> c.name to catalog.items.count { it.categoryId == c.id } }
-        Dialogs.manageGroups(this, names, { countByName[it] ?: 0 }, store.hiddenGroups(hiddenKey),
-            if (series) "Serien" else "Filme") { hide ->
-            store.setHiddenGroups(hiddenKey, hide)
+        Dialogs.manageGroups(this, names, { countByName[it] ?: 0 }, store.hiddenGroups(hiddenKey(p)),
+            (if (series) "Serien" else "Filme") + if (parts.size > 1) " · ${p.name}" else "") { hide ->
+            store.setHiddenGroups(hiddenKey(p), hide)
             shownCat = null
             buildCats()
             showCat(catKeys.firstOrNull { it == "" } ?: catKeys.first())
@@ -193,35 +212,50 @@ class VodActivity : Activity() {
     private val sortedCache = HashMap<String, List<VodItem>>()
 
     private fun buildCats() {
-        store.applyAllowedCountries(hiddenKey, catalog.categories.map { it.name })
-        hidden = store.hiddenGroups(hiddenKey)
-        val hiddenIds = catalog.categories.filter { it.name in hidden }.map { it.id }.toSet()
-        visibleItems = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
-        byCat = visibleItems.groupBy { it.categoryId }
+        val multi = parts.size > 1
+        val vis = ArrayList<VodItem>()
+        val bc = HashMap<String, List<VodItem>>()
+        // Kategorien je Playlist: (Schlüssel, Name, Playlist)
+        val catRows = ArrayList<Triple<String, String, Playlist>>()
+        for ((p, catalog) in parts) {
+            val hk = hiddenKey(p)
+            store.applyAllowedCountries(hk, catalog.categories.map { it.name })
+            val hid = store.hiddenGroups(hk)
+            val hiddenIds = catalog.categories.filter { it.name in hid }.map { it.id }.toSet()
+            val v = if (hiddenIds.isEmpty()) catalog.items else catalog.items.filter { it.categoryId !in hiddenIds }
+            vis.addAll(v)
+            v.groupBy { it.categoryId }.forEach { (id, l) -> bc[key(p, id)] = l }
+            catalog.categories.filter { it.name !in hid }.forEach { c -> catRows.add(Triple(key(p, c.id), c.name, p)) }
+        }
+        visibleItems = vis
+        byCat = bc
         resumeCache = if (series) emptyList() else store.resumeHashes().let { hs ->
-            if (hs.isEmpty()) emptyList() else catalog.items.filter { it.url != null && it.url.hashCode() in hs }
+            if (hs.isEmpty()) emptyList() else parts.flatMap { it.second.items }.filter { it.url != null && it.url.hashCode() in hs }
         }
         // „Zuletzt hinzugefügt“: Datum vom Anbieter, sonst die Nummer (neuere Einträge haben höhere Nummern)
         val hasDate = visibleItems.any { it.added > 0 }
         newCache = visibleItems.sortedByDescending { if (hasDate) it.added else (it.id.toLongOrNull() ?: 0L) }.take(200)
         sortedCache.clear()
         val filtering = yearFrom != null || yearBefore != null || minRating > 0
-        val counts: Map<String, Int> = if (filtering) visibleItems.filter { passes(it) }.groupingBy { it.categoryId }.eachCount()
-            else byCat.mapValues { it.value.size }
-        val keys = ArrayList<String>(); val labels = ArrayList<String>(); val nums = ArrayList<String>()
-        if (resumeCache.isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen"); nums.add(resumeCache.size.toString()) }
-        if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis"); nums.add(searchResults.size.toString()) }
-        if (newCache.isNotEmpty()) { keys.add("#new"); labels.add("🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()) }
-        keys.add(""); labels.add("Alle"); nums.add((if (filtering) counts.values.sum() else visibleItems.size).toString())
-        catalog.categories.filter { it.name !in hidden }.forEach { c ->
-            val n = counts[c.id] ?: 0
+        val counts: Map<String, Int> = if (filtering) byCat.mapValues { e -> e.value.count { passes(it) } } else byCat.mapValues { it.value.size }
+        val keys = ArrayList<String>(); val labels = ArrayList<String>(); val nums = ArrayList<String>(); val heads = ArrayList<String?>()
+        if (resumeCache.isNotEmpty()) { keys.add("#resume"); labels.add("▶ Weiterschauen"); nums.add(resumeCache.size.toString()); heads.add(null) }
+        if (searchResults.isNotEmpty()) { keys.add("#search"); labels.add("🔍 Suchergebnis"); nums.add(searchResults.size.toString()); heads.add(null) }
+        if (newCache.isNotEmpty()) { keys.add("#new"); labels.add("🆕 Zuletzt hinzugefügt"); nums.add(newCache.size.toString()); heads.add(null) }
+        keys.add(""); labels.add(if (multi) "Alle (${parts.joinToString(" + ") { it.first.name }})" else "Alle")
+        nums.add((if (filtering) counts.values.sum() else visibleItems.size).toString()); heads.add(null)
+        var lastPl: String? = null
+        catRows.forEach { (k, name, p) ->
+            val n = counts[k] ?: 0
             if (filtering && n == 0) return@forEach   // beim Filtern leere Kategorien ausblenden
-            keys.add(c.id); labels.add(c.name); nums.add(n.toString())
+            keys.add(k); labels.add(name); nums.add(n.toString())
+            heads.add(if (multi && p.id != lastPl) "📡  ${p.name.uppercase()}" else null)
+            lastPl = p.id
         }
         catKeys = keys; catLabels = labels
         catAdapter.items = keys.indices.map { i ->
             val k = keys[i]
-            TextItem(if (k.isEmpty() || k.startsWith("#")) labels[i] else Countries.pretty(labels[i]), nums[i])
+            TextItem(if (k.isEmpty() || k.startsWith("#")) labels[i] else Countries.pretty(labels[i]), nums[i], heads[i])
         }
     }
 
@@ -435,6 +469,7 @@ class VodActivity : Activity() {
     // ---------- Öffnen ----------
 
     private fun open(item: VodItem) {
+        cur = plOf(item)
         if (item.isSeries) openSeries(item) else openMovie(item)
     }
 
@@ -456,7 +491,7 @@ class VodActivity : Activity() {
         dlg.show()
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
         scope.launch {
-            val info = Vod.movieInfo(this@VodActivity, playlist, item)
+            val info = Vod.movieInfo(this@VodActivity, plOf(item), item)
             val parts = ArrayList<String>()
             listOf(info?.year?.ifBlank { item.year } ?: item.year, info?.genre ?: "", info?.duration ?: "",
                 item.rating.takeIf { it.isNotBlank() && it != "0" }?.let { "★ $it" } ?: "")
@@ -471,7 +506,7 @@ class VodActivity : Activity() {
     private fun openSeries(item: VodItem) {
         loading("„${item.name}“ wird geladen …")
         scope.launch {
-            val eps = try { Vod.episodes(this@VodActivity, playlist, item) } catch (e: Exception) {
+            val eps = try { Vod.episodes(this@VodActivity, plOf(item), item) } catch (e: Exception) {
                 loading(null); Toast.makeText(this@VodActivity, "Folgen konnten nicht geladen werden: ${e.message}", Toast.LENGTH_LONG).show(); return@launch
             }
             loading(null)
@@ -510,7 +545,7 @@ class VodActivity : Activity() {
     private fun play(title: String, url: String, pos: Long, eps: List<Episode>? = null, idx: Int = -1) {
         val i = Intent(this, VodPlayerActivity::class.java)
             .putExtra("title", title).putExtra("url", url).putExtra("pos", pos)
-            .putExtra("pid", playlist.id)
+            .putExtra("pid", (cur ?: pls.first()).id)
         if (eps != null && idx >= 0 && idx + 1 < eps.size) {
             // nächste Folge für „Weiter“
             val n = eps[idx + 1]
