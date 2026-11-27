@@ -450,14 +450,17 @@ class PlayerActivity : Activity() {
                 try {
                     show("${p.name}: Sender werden geladen …")
                     val l = Repo.preload(this@PlayerActivity, p, store.streamFormat, force)
-                    try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force) } catch (_: Throwable) { }
-                } catch (e: Exception) { failed.add(p.name) }
+                    try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force) } catch (_: Throwable) { System.gc() }
+                } catch (e: Throwable) { failed.add(p.name) }
             }
             for (p in pls) for (series in listOf(false, true)) {
                 try {
                     show("${p.name}: ${if (series) "Serien" else "Filme"} werden geladen …")
                     if (Vod.prefetch(this@PlayerActivity, p, series, force, since)) kotlinx.coroutines.delay(1500) // Anbieter nicht überlasten
-                } catch (e: Exception) { if (p.name !in failed) failed.add(p.name + if (series) " (Serien)" else " (Filme)") }
+                } catch (e: Throwable) {   // auch „zu wenig Speicher“ darf die App nicht beenden
+                    if (e is OutOfMemoryError) System.gc()
+                    if (p.name !in failed) failed.add(p.name + if (series) " (Serien)" else " (Filme)")
+                }
             }
             chip.visibility = View.GONE
             if (force) toast(if (failed.isEmpty()) "Alle Playlists aktualisiert (TV, Filme, Serien)" else "Aktualisiert – Probleme bei: ${failed.joinToString()}")

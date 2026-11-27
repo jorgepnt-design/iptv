@@ -125,29 +125,61 @@ object Vod {
         throw e ?: IOException("Unbekannter Fehler")
     }
 
+    /** JSON-Wert als Text lesen, egal ob Text, Zahl, true/false oder null (Objekte/Listen werden übersprungen) */
+    private fun jstr(r: android.util.JsonReader): String = when (r.peek()) {
+        android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> r.nextString()
+        android.util.JsonToken.BOOLEAN -> r.nextBoolean().toString()
+        android.util.JsonToken.NULL -> { r.nextNull(); "" }
+        else -> { r.skipValue(); "" }
+    }
+
     private fun readDisk(f: File): VodCatalog? {
         if (!f.exists() || System.currentTimeMillis() - f.lastModified() > DISK_AGE) return null
         return try {
-            val o = JSONObject(f.readText())
-            val ca = o.getJSONArray("c"); val ia = o.getJSONArray("i")
-            val cats = (0 until ca.length()).map { val c = ca.getJSONArray(it); VodCategory(c.getString(0), c.getString(1)) }
-            val items = ArrayList<VodItem>(ia.length())
-            for (k in 0 until ia.length()) {
-                val a = ia.getJSONArray(k)
-                items.add(VodItem(a.getString(0), a.getString(1), a.optString(2).ifBlank { null }, a.getString(3), a.optString(4),
-                    a.optString(5).ifBlank { null }, a.optBoolean(6), a.optString(7), a.optString(8), null, a.optLong(9)))
+            val cats = ArrayList<VodCategory>()
+            val items = ArrayList<VodItem>()
+            val ids = HashMap<String, String>()
+            android.util.JsonReader(java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(f), Charsets.UTF_8), 65536)).use { r ->
+                r.beginObject()
+                while (r.hasNext()) {
+                    when (r.nextName()) {
+                        "c" -> { r.beginArray(); while (r.hasNext()) { r.beginArray(); val id = jstr(r); val n = jstr(r); while (r.hasNext()) r.skipValue(); r.endArray(); cats.add(VodCategory(id, n)) }; r.endArray() }
+                        "i" -> {
+                            r.beginArray()
+                            while (r.hasNext()) {
+                                r.beginArray()
+                                val v = arrayOfNulls<String>(10)
+                                var k = 0
+                                while (r.hasNext()) { val x = jstr(r); if (k < 10) v[k] = x; k++ }
+                                r.endArray()
+                                val cat = v[3] ?: ""
+                                items.add(VodItem(v[0] ?: "", v[1] ?: "", v[2]?.ifBlank { null }, ids.getOrPut(cat) { cat }, v[4] ?: "",
+                                    v[5]?.ifBlank { null }, v[6] == "true", v[7] ?: "", v[8] ?: "", null, v[9]?.toLongOrNull() ?: 0))
+                            }
+                            r.endArray()
+                        }
+                        else -> r.skipValue()
+                    }
+                }
+                r.endObject()
             }
             VodCatalog(cats, items)
-        } catch (e: Exception) { null }
+        } catch (e: Throwable) { null }
     }
 
     private fun writeDisk(f: File, c: VodCatalog) {
-        val ca = JSONArray(); c.categories.forEach { ca.put(JSONArray().put(it.id).put(it.name)) }
-        val ia = JSONArray()
-        c.items.forEach { v -> ia.put(JSONArray().put(v.id).put(v.name).put(v.poster ?: "").put(v.categoryId).put(v.rating)
-            .put(v.url ?: "").put(v.isSeries).put(v.plot).put(v.year).put(v.added)) }
         val tmp = File(f.path + ".tmp")
-        tmp.writeText(JSONObject().put("c", ca).put("i", ia).toString())
+        android.util.JsonWriter(java.io.BufferedWriter(java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8), 65536)).use { w ->
+            w.beginObject()
+            w.name("c").beginArray(); c.categories.forEach { w.beginArray().value(it.id).value(it.name).endArray() }; w.endArray()
+            w.name("i").beginArray()
+            c.items.forEach { v ->
+                w.beginArray().value(v.id).value(v.name).value(v.poster ?: "").value(v.categoryId).value(v.rating)
+                    .value(v.url ?: "").value(v.isSeries).value(v.plot).value(v.year).value(v.added).endArray()
+            }
+            w.endArray()
+            w.endObject()
+        }
         tmp.renameTo(f)
     }
 
@@ -159,25 +191,49 @@ object Vod {
         val cats = try { JSONArray(catsTxt) } catch (e: Exception) { JSONArray() }
         val categories = (0 until cats.length()).map { val o = cats.getJSONObject(it); VodCategory(str(o, "category_id"), str(o, "category_name")) }
         val label = if (series) "Serien werden geladen …" else "Filme werden geladen …"
-        val txt = Http.text("$b/player_api.php?$a&action=" + if (series) "get_series" else "get_vod_streams", Http.bytesTo(label, progress))
-        progress?.invoke("Wird verarbeitet …", -1)
-        val arr = try { JSONArray(txt) } catch (e: Exception) { throw IOException(if (series) "Keine Serien gefunden" else "Keine Filme gefunden") }
-        val items = ArrayList<VodItem>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            if (series) {
-                items.add(VodItem(str(o, "series_id"), str(o, "name"), str(o, "cover").ifBlank { null }, str(o, "category_id"),
-                    str(o, "rating"), null, true, str(o, "plot"), str(o, "releaseDate").take(4),
-                    added = str(o, "last_modified").toLongOrNull() ?: 0))
-            } else {
-                val id = str(o, "stream_id")
-                val ext = str(o, "container_extension").ifBlank { "mp4" }
-                items.add(VodItem(id, str(o, "name"), str(o, "stream_icon").ifBlank { null }, str(o, "category_id"),
-                    str(o, "rating"), "$b/movie/${p.user}/${p.pass}/$id.$ext", false, year = str(o, "year"),
-                    added = str(o, "added").toLongOrNull() ?: 0))
+        // Stück für Stück lesen: manche Anbieter liefern mehrere hundert MB – am Stück passt das nicht in den Speicher
+        val items = ArrayList<VodItem>()
+        val ids = HashMap<String, String>()
+        Http.open("$b/player_api.php?$a&action=" + if (series) "get_series" else "get_vod_streams", Http.bytesTo(label, progress)).use { ins ->
+            val r = android.util.JsonReader(java.io.InputStreamReader(ins, Charsets.UTF_8))
+            r.isLenient = true
+            if (r.peek() != android.util.JsonToken.BEGIN_ARRAY) throw IOException(if (series) "Keine Serien gefunden" else "Keine Filme gefunden")
+            r.beginArray()
+            while (r.hasNext()) {
+                if (r.peek() != android.util.JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+                var id = ""; var name = ""; var icon = ""; var cat = ""; var rating = ""; var ext = ""; var plot = ""; var year = ""; var added = ""
+                r.beginObject()
+                while (r.hasNext()) {
+                    when (r.nextName()) {
+                        "stream_id", "series_id" -> id = jstr(r)
+                        "name" -> name = jstr(r)
+                        "stream_icon", "cover" -> { val x = jstr(r); if (x.isNotBlank() && x != "null") icon = x }
+                        "category_id" -> cat = jstr(r)
+                        "rating" -> rating = jstr(r)
+                        "container_extension" -> ext = jstr(r)
+                        "plot" -> plot = if (series) jstr(r).take(400) else { r.skipValue(); "" }
+                        "releaseDate" -> { val x = jstr(r); if (series) year = x.take(4) }
+                        "year" -> { val x = jstr(r); if (!series) year = x }
+                        "added", "last_modified" -> { val x = jstr(r); if (x.isNotBlank()) added = x }
+                        else -> r.skipValue()
+                    }
+                }
+                r.endObject()
+                fun clean(x: String) = if (x == "null") "" else x
+                val c = ids.getOrPut(clean(cat)) { clean(cat) }
+                if (series) {
+                    items.add(VodItem(clean(id), clean(name), icon.ifBlank { null }, c, clean(rating), null, true, clean(plot), clean(year),
+                        added = added.toLongOrNull() ?: 0))
+                } else {
+                    val e = clean(ext).ifBlank { "mp4" }
+                    items.add(VodItem(clean(id), clean(name), icon.ifBlank { null }, c, clean(rating), "$b/movie/${p.user}/${p.pass}/${clean(id)}.$e", false,
+                        year = clean(year), added = added.toLongOrNull() ?: 0))
+                }
             }
         }
-        return VodCatalog(categories.filter { c -> items.any { it.categoryId == c.id } }, items)
+        progress?.invoke("Wird verarbeitet …", -1)
+        val used = items.mapTo(HashSet()) { it.categoryId }
+        return VodCatalog(categories.filter { it.id in used }, items)
     }
 
     private fun m3uCatalog(all: List<Channel>, series: Boolean): VodCatalog {

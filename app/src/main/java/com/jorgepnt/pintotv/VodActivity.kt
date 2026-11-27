@@ -162,7 +162,9 @@ class VodActivity : Activity() {
                 try {
                     val c = Vod.catalog(this@VodActivity, p, series) { t, pc -> runOnUiThread { loading(if (sel.size > 1) "${p.name}: $t" else t, pc) } }
                     if (c.items.isNotEmpty()) res.add(p to c)
-                } catch (e: Exception) { errs.add("${p.name}: ${e.message}") }
+                } catch (e: Throwable) {
+                    if (e is OutOfMemoryError) { System.gc(); errs.add("${p.name}: zu groß für den Speicher") } else errs.add("${p.name}: ${e.message}")
+                }
             }
             liveAllowed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 res.associate { (p, _) -> p.id to Repo.liveCountries(this@VodActivity, p.id) }
