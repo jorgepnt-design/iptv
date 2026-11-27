@@ -344,7 +344,8 @@ class PlayerActivity : Activity() {
 
     // ---------- Laden ----------
 
-    private fun load(force: Boolean) {
+    /** stay = im Kanal-Bildschirm bleiben und nur die Senderliste umstellen (laufender Sender spielt weiter) */
+    private fun load(force: Boolean, stay: Boolean = false) {
         val p = store.active() ?: return
         if (force) Vod.clearCache(this)
         playlist = p
@@ -367,6 +368,18 @@ class PlayerActivity : Activity() {
             hideStatus()
             store.migrateFavorites(p.id, Repo.channels)
             buildGroups()
+            if (stay) {
+                if (overlay.visibility != View.VISIBLE) showOverlay()
+                viewingGroup = groupKeys.getOrElse(specialCount) { G_ALL }
+                refreshGroupCounts()
+                channelAdapter.items = channelsOf(viewingGroup)
+                channelAdapter.playingUrl = current?.url
+                channelList.scrollToPosition(0)
+                focusAt(groupList, groupKeys.indexOf(PL + p.id).coerceAtLeast(0))
+                armOverlayTimer()
+                loadEpg(force)
+                return@launch
+            }
             toast("${Repo.channels.size} Sender in ${Repo.groups.size} Gruppen geladen")
             val last = store.lastUrl(p.id)
             playingGroup = store.lastGroup?.takeIf { it in groupKeys } ?: G_ALL
@@ -458,8 +471,7 @@ class PlayerActivity : Activity() {
         if (id == playlist?.id) { switchPlaylist(); return }
         if (store.playlists().none { it.id == id }) return
         store.activeId = id
-        hideOverlay()
-        load(false)
+        load(false, stay = true)
     }
 
     private var hidden: Set<String> = emptySet()
