@@ -115,6 +115,14 @@ class MultiViewActivity : Activity() {
             gravity = Gravity.CENTER
             text = "＋\nOK drücken, um einen Sender zu wählen"
         }
+        /** Playlist-Schild oben links – bleibt immer sichtbar, wenn es mehrere Playlists gibt */
+        val plBadge = TextView(this@MultiViewActivity).apply {
+            setTextColor(Color.WHITE); textSize = 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            letterSpacing = 0.06f
+            setPadding(14, 4, 14, 4)
+            visibility = View.GONE
+        }
         var player: ExoPlayer? = null
         var channel: Channel? = null
         var errors = 0
@@ -142,6 +150,7 @@ class MultiViewActivity : Activity() {
             frame.addView(view, FrameLayout.LayoutParams(-1, -1))
             frame.addView(hint, FrameLayout.LayoutParams(-1, -1))
             frame.addView(label, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(16, 16, 16, 16) })
+            frame.addView(plBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(12, 12, 12, 12) })
             frame.foreground = getDrawable(R.drawable.tile_normal)
             // Touch: Fenster antippen = auswählen (Ton), nochmal antippen = Sender wählen, lang = Optionen
             frame.setOnClickListener {
@@ -159,6 +168,7 @@ class MultiViewActivity : Activity() {
             src = if (c == null) null else source
             tiles[index] = c?.url
             sources[index] = src
+            updateBadge()
             if (c == null) {
                 player?.release(); player = null; view.player = null
                 label.visibility = View.GONE; hint.visibility = View.VISIBLE
@@ -168,7 +178,7 @@ class MultiViewActivity : Activity() {
             hint.text = "＋\nOK drücken, um einen Sender zu wählen"
             errors = 0
             val (cur, _) = Repo.nowNext(c)
-            label.text = (if (isOther) "[${src?.playlist?.name}]  " else "") + "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
+            label.text = (if (multiPl) "${plName()}  ·  " else "") + "${c.number}  ${c.name}" + (cur?.let { "  ·  ${it.title}" } ?: "")
             flashLabel()
             val p = player ?: Players.create(this@MultiViewActivity) { src?.ua ?: Http.UA }.also { np ->
                 player = np
@@ -200,6 +210,20 @@ class MultiViewActivity : Activity() {
             p.prepare()
             p.playWhenReady = true
             applyAudio()
+        }
+
+        fun plName() = (src?.playlist ?: Repo.current()?.playlist)?.name ?: ""
+
+        fun updateBadge() {
+            if (channel == null || !multiPl) { plBadge.visibility = View.GONE; return }
+            val name = plName()
+            plBadge.text = "▶ " + name.uppercase()
+            // jede Playlist eine eigene, gut unterscheidbare Farbe
+            val colors = intArrayOf(0xE62962FF.toInt(), 0xE6E65100.toInt(), 0xE62E7D32.toInt(), 0xE6AD1457.toInt())
+            val pls = Store(this@MultiViewActivity).playlists()
+            val i = pls.indexOfFirst { it.id == (src?.playlist?.id ?: Repo.playlistId) }.coerceAtLeast(0)
+            plBadge.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 14f; setColor(colors[i % colors.size]) }
+            plBadge.visibility = View.VISIBLE
         }
 
         fun start() { channel?.let { set(it) } }
@@ -263,6 +287,7 @@ class MultiViewActivity : Activity() {
     }
 
     private fun count() = if (four) 4 else 2
+    private val multiPl by lazy { Store(this).playlists().size > 1 }
 
     private fun applyLayout() {
         row2.visibility = if (four) View.VISIBLE else View.GONE
@@ -349,7 +374,7 @@ class MultiViewActivity : Activity() {
             .setTitle(c.name)
             .setItems(arrayOf("Sender wechseln", "Im Vollbild ansehen", "Fenster leeren", if (four) "Auf 2 Fenster umschalten" else "Auf 4 Fenster umschalten")) { _, w ->
                 when (w) {
-                    0 -> pickGroup()
+                    0 -> changeChannel()
                     1 -> {
                         setResult(RESULT_OK, Intent().putExtra("url", c.url).putExtra("pid", list[sel].src?.playlist?.id ?: Repo.playlistId))
                         finish()
@@ -365,6 +390,26 @@ class MultiViewActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
+    }
+
+    /** Sender wechseln: direkt die Senderliste der Gruppe des laufenden Senders, Fokus auf diesem Sender */
+    private fun changeChannel() {
+        val t = list[sel]
+        val c = t.channel ?: run { pickGroup(); return }
+        val src = t.src ?: Repo.current() ?: run { pickGroup(); return }
+        val l = src.byGroup[c.group]?.takeIf { it.isNotEmpty() } ?: src.channels
+        val idx = l.indexOfFirst { it.url == c.url }.coerceAtLeast(0)
+        val labels = listOf("⇄  Andere Gruppe oder Playlist …") +
+            l.map { ch -> (if (ch.url == c.url) "▶ " else "") + "${ch.number}  ${ch.name}" + (Repo.nowNext(ch).first?.let { "  –  ${it.title}" } ?: "") }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle((if (multiPl) "${src.playlist.name}  ·  " else "") + Countries.pretty(c.group))
+            .setItems(labels.toTypedArray()) { _, w ->
+                if (w == 0) pickGroup() else { list[sel].set(l[w - 1], src); highlight() }
+            }.create()
+        dlg.setOnShowListener {
+            dlg.listView?.let { lv -> lv.setSelection(idx + 1); lv.post { lv.requestFocus(); lv.setSelection(idx + 1) } }
+        }
+        dlg.show()
     }
 
     /** Schritt 1: Playlist wählen (nur wenn mehrere vorhanden) */
