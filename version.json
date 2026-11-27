@@ -1,6 +1,6 @@
 {
-  "versionCode": 92,
-  "versionName": "2.80",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/166eebaa4c25ceda60e4a708e7cfe2779c99796b/pintotv.apk",
-  "notes": "• Absturz „OutOfMemoryError“ behoben: sehr große Film-/Serienlisten (z. B. pro) werden jetzt Stück für Stück geladen\n• Geht beim Vorladen trotzdem etwas schief, stürzt die App nicht mehr ab"
+  "versionCode": 93,
+  "versionName": "2.81",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/0a11aac4b5f10636a87cd3bf7e5e0f26a63ed690/pintotv.apk",
+  "notes": "• „Aktualisieren“: Fortschritt ist jetzt sichtbar (lag vorher hinter dem Menü), am Ende kommt eine Meldung\n• Hintergrund-Laden (andere Playlist, Filme, Serien) oben rechts sichtbar"
 }
