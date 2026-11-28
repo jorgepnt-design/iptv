@@ -1,6 +1,6 @@
 {
-  "versionCode": 100,
-  "versionName": "2.88",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/537501041eef1125dbd6d60a49b3522e11bf65ec/pintotv.apk",
-  "notes": "• Nach „Aktualisieren“ kommt eine Übersicht: wie viele TV-Sender, Filme und Serien je Playlist neu dazugekommen sind\n• Beim allerersten Mal wird der Stand nur erfasst – ab dem nächsten Aktualisieren siehst du die Neuen"
+  "versionCode": 101,
+  "versionName": "2.89",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/f4a9234d52075a4c06a292bcbb397c0a630e7a70/pintotv.apk",
+  "notes": "• Filme und Serien werden nur noch für deine Länder geladen (z. B. Deutschland + XXX) – viel schneller und weniger Speicher\n• Änderst du die Länder im Live-TV, werden Filme/Serien automatisch passend neu geladen"
 }
