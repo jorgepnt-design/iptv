@@ -1,6 +1,6 @@
 {
-  "versionCode": 98,
-  "versionName": "2.86",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/2a61133d5aece3b1eaca9298d4410d7cb0f8c628/pintotv.apk",
-  "notes": "• Keine falsche Absturzmeldung mehr, wenn nur Android selbst kurz hängt (z. B. beim Ausschalten des Bildschirms)"
+  "versionCode": 99,
+  "versionName": "2.87",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/70f494dfb5005007c5912ec1c8a34955651b3693/pintotv.apk",
+  "notes": "• Gruppen/Kategorien ein- und ausblenden: neuer Knopf „⇅ A–Z“ sortiert die Liste nach Name (nochmal drücken = wie Liste)\n• Gilt für alle Auswahllisten mit Haken – die Wahl wird gemerkt"
 }
