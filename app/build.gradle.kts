@@ -11,8 +11,8 @@ android {
         applicationId = "com.jorgepnt.pintotv"
         minSdk = 22
         targetSdk = 35
-        versionCode = 100
-        versionName = "2.88"
+        versionCode = 101
+        versionName = "2.89"
     }
 
     signingConfigs {

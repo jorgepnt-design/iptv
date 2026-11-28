@@ -71,6 +71,15 @@ object Vod {
 
     private val cache = HashMap<String, VodCatalog>()
 
+    /** Länder, die geladen werden sollen (deine Auswahl aus dem Live-TV), z. B. „DE,XXX“ – leer = alles */
+    fun scopeFor(ctx: Context, p: Playlist): String {
+        val a = Repo.liveCountries(ctx, p.id) ?: Repo.globalCountries(ctx) ?: return ""
+        return a.filter { it != "?" }.sorted().joinToString(",")
+    }
+
+    private fun scopeFile(f: File) = File(f.path + ".scope")
+    private fun diskScope(f: File) = try { scopeFile(f).takeIf { it.exists() }?.readText() ?: "" } catch (_: Exception) { "" }
+
     private fun <T> withUa(pid: String, ctx: Context, block: () -> T): T {
         Http.threadUA.set(Store(ctx).userAgent(pid) ?: Http.UA)
         try { return block() } finally { Http.threadUA.set(null) }
@@ -84,9 +93,10 @@ object Vod {
         val result = if (p0.type == "xtream") {
             // gespeicherter Katalog (12 Std.) – schont den Anbieter, der sonst bei vielen Abrufen sperrt (z. B. HTTP 456)
             val f = File(ctx.filesDir, "vod_${p0.id}_${if (series) "s" else "m"}.json")
-            readDisk(f) ?: run {
-                val fresh = fetchWithRetry(ctx, p0, series, progress)
-                try { writeDisk(f, fresh) } catch (_: Exception) { }
+            val scope = scopeFor(ctx, p0)
+            (if (diskScope(f) == scope) readDisk(f) else null) ?: run {
+                val fresh = fetchWithRetry(ctx, p0, series, progress, scope)
+                try { writeDisk(f, fresh); scopeFile(f).writeText(scope) } catch (_: Exception) { }
                 fresh
             }
         } else m3uCatalog(Repo.vodOf(p0.id), series)
@@ -100,10 +110,12 @@ object Vod {
         if (p0.type != "xtream") return@withContext false
         val key = p0.id + if (series) ":s" else ":m"
         val f = File(ctx.filesDir, "vod_${p0.id}_${if (series) "s" else "m"}.json")
-        if (force && f.exists() && f.lastModified() >= since) return@withContext false  // gerade erst geholt
-        if (!force && (cache.containsKey(key) || (f.exists() && System.currentTimeMillis() - f.lastModified() < DISK_AGE))) return@withContext false
-        val fresh = fetchWithRetry(ctx, p0, series, null)
-        try { writeDisk(f, fresh) } catch (_: Exception) { }
+        val scope = scopeFor(ctx, p0)
+        val sameScope = diskScope(f) == scope
+        if (force && sameScope && f.exists() && f.lastModified() >= since) return@withContext false  // gerade erst geholt
+        if (!force && sameScope && (cache.containsKey(key) || (f.exists() && System.currentTimeMillis() - f.lastModified() < DISK_AGE))) return@withContext false
+        val fresh = fetchWithRetry(ctx, p0, series, null, scope)
+        try { writeDisk(f, fresh); scopeFile(f).writeText(scope) } catch (_: Exception) { }
         cache.remove(key)   // beim nächsten Öffnen frisch von der Platte
         true
     }
@@ -116,7 +128,7 @@ object Vod {
     private const val DISK_AGE = 12 * 3600_000L
 
     /** bei Ablehnung: kurz warten und mit anderer Player-Kennung erneut versuchen */
-    private fun fetchWithRetry(ctx: Context, p0: Playlist, series: Boolean, progress: Progress?): VodCatalog {
+    private fun fetchWithRetry(ctx: Context, p0: Playlist, series: Boolean, progress: Progress?, scope: String = ""): VodCatalog {
         val store = Store(ctx)
         val first = store.userAgent(p0.id) ?: Http.UA
         val tries = (listOf(first) + Http.CANDIDATES).distinct().take(4)
@@ -128,7 +140,7 @@ object Vod {
             }
             Http.threadUA.set(ua)
             try {
-                return xtreamCatalog(Xtream.normalize(p0), series, progress)
+                return xtreamCatalog(Xtream.normalize(p0), series, progress, scope)
             } catch (e: HttpStatusException) {
                 last = e
             } catch (e: java.net.SocketTimeoutException) {
@@ -201,7 +213,7 @@ object Vod {
         tmp.renameTo(f)
     }
 
-    private fun xtreamCatalog(p: Playlist, series: Boolean, progress: Progress?): VodCatalog {
+    private fun xtreamCatalog(p: Playlist, series: Boolean, progress: Progress?, scope: String = ""): VodCatalog {
         val b = Xtream.base(p.server)
         val a = Xtream.auth(p)
         progress?.invoke("Kategorien werden geladen …", -1)
@@ -212,10 +224,39 @@ object Vod {
         // Stück für Stück lesen: manche Anbieter liefern mehrere hundert MB – am Stück passt das nicht in den Speicher
         val items = ArrayList<VodItem>()
         val ids = HashMap<String, String>()
-        Http.open("$b/player_api.php?$a&action=" + if (series) "get_series" else "get_vod_streams", Http.bytesTo(label, progress)).use { ins ->
+        val action = "$b/player_api.php?$a&action=" + if (series) "get_series" else "get_vod_streams"
+        // nur deine Länder laden (z. B. Deutschland + XXX): Kategorie für Kategorie statt der ganzen Liste
+        val allowed = scope.split(",").filter { it.isNotBlank() }.toSet()
+        val wanted = if (allowed.isEmpty()) emptyList() else categories.filter { Countries.code(it.name) in allowed }
+        if (wanted.isNotEmpty() && wanted.size <= 80) {
+            wanted.forEachIndexed { i, c ->
+                progress?.invoke("$label (${i + 1}/${wanted.size}: ${Countries.bare(c.name)})", (i * 100 / wanted.size))
+                var ok = false
+                for (attempt in 0..2) {
+                    try { parseStreams("$action&category_id=${c.id}", series, b, p, items, ids, null, null, c.id); ok = true; break }
+                    catch (e: HttpStatusException) { Thread.sleep(2000L * (attempt + 1)) }
+                    catch (e: java.io.IOException) { if (attempt == 2) throw e; Thread.sleep(1500) }
+                }
+                if (!ok) throw IOException("Anbieter lehnt ab – bitte später nochmal aktualisieren")
+                Thread.sleep(250)   // Anbieter nicht überlasten
+            }
+            progress?.invoke("Wird verarbeitet …", -1)
+            val used = items.mapTo(HashSet()) { it.categoryId }
+            return VodCatalog(categories.filter { it.id in used }, items)
+        }
+        parseStreams(action, series, b, p, items, ids, label, progress, null)
+        progress?.invoke("Wird verarbeitet …", -1)
+        val used = items.mapTo(HashSet()) { it.categoryId }
+        return VodCatalog(categories.filter { it.id in used }, items)
+    }
+
+    /** eine Liste vom Anbieter Stück für Stück einlesen und an items anhängen */
+    private fun parseStreams(url: String, series: Boolean, b: String, p: Playlist, items: MutableList<VodItem>, ids: HashMap<String, String>,
+                             label: String?, progress: Progress?, forceCat: String?) {
+        Http.open(url, if (label != null) Http.bytesTo(label, progress) else null).use { ins ->
             val r = android.util.JsonReader(java.io.InputStreamReader(ins, Charsets.UTF_8))
             r.isLenient = true
-            if (r.peek() != android.util.JsonToken.BEGIN_ARRAY) throw IOException(if (series) "Keine Serien gefunden" else "Keine Filme gefunden")
+            if (r.peek() != android.util.JsonToken.BEGIN_ARRAY) { if (forceCat != null) return else throw IOException(if (series) "Keine Serien gefunden" else "Keine Filme gefunden") }
             r.beginArray()
             while (r.hasNext()) {
                 if (r.peek() != android.util.JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
@@ -238,7 +279,8 @@ object Vod {
                 }
                 r.endObject()
                 fun clean(x: String) = if (x == "null") "" else x
-                val c = ids.getOrPut(clean(cat)) { clean(cat) }
+                val c0 = clean(cat).ifBlank { forceCat ?: "" }
+                val c = ids.getOrPut(c0) { c0 }
                 if (series) {
                     items.add(VodItem(clean(id), clean(name), icon.ifBlank { null }, c, clean(rating), null, true, clean(plot), clean(year),
                         added = added.toLongOrNull() ?: 0))
@@ -249,9 +291,6 @@ object Vod {
                 }
             }
         }
-        progress?.invoke("Wird verarbeitet …", -1)
-        val used = items.mapTo(HashSet()) { it.categoryId }
-        return VodCatalog(categories.filter { it.id in used }, items)
     }
 
     private fun m3uCatalog(all: List<Channel>, series: Boolean): VodCatalog {
