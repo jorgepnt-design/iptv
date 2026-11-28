@@ -351,14 +351,20 @@ class PlayerActivity : Activity() {
     private fun load(force: Boolean, stay: Boolean = false) {
         val p = store.active() ?: return
         val samePl = playlist?.id == p.id
-        if (force) { Known.reset(); Vod.clearCache(this) }
+        // „Aktualisieren“: nur das, was du unter „Was aktualisieren?“ gewählt hast
+        val tvForce = force && store.getString("upd_tv", "1") == "1"
+        if (force) {
+            Known.reset()
+            Vod.clearCache(this, store.getString("upd_m", "1") == "1", store.getString("upd_s", "1") == "1")
+            pendingRefresh = true
+        }
         playlist = p
         loading = true
         hideStatus()
         showLoading(if (force && store.playlists().size > 1) "Alle Playlists werden aktualisiert – zuerst „${p.name}“" else if (force) "„${p.name}“ wird aktualisiert" else "„${p.name}“ wird geladen", "Starte …", -1)
         scope.launch {
             try {
-                Repo.loadChannels(this@PlayerActivity, p, store.streamFormat, force) { step, pct ->
+                Repo.loadChannels(this@PlayerActivity, p, store.streamFormat, tvForce) { step, pct ->
                     runOnUiThread { showLoading(null, step, pct) }
                 }
             } catch (e: Exception) {
@@ -371,7 +377,7 @@ class PlayerActivity : Activity() {
             hideLoading()
             hideStatus()
             store.migrateFavorites(p.id, Repo.channels)
-            if (force) {
+            if (tvForce) {
                 val urls = Repo.channels.map { it.url }
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { Known.update(filesDir, "${p.id}_tv", urls) } catch (_: Throwable) { } }
             }
@@ -395,7 +401,7 @@ class PlayerActivity : Activity() {
                 focusAt(groupList, groupKeys.indexOf(PL + p.id).coerceAtLeast(0))
                 armOverlayTimer()
                 if (force) toast("„${p.name}“ aktualisiert: ${Repo.channels.size} Sender" + if (store.playlists().size > 1) " – andere Playlists, Filme und Serien folgen im Hintergrund" else " – Filme und Serien folgen im Hintergrund")
-                loadEpg(force)
+                loadEpg(tvForce)
                 return@launch
             }
             toast("${Repo.channels.size} Sender in ${Repo.groups.size} Gruppen geladen")
@@ -405,7 +411,7 @@ class PlayerActivity : Activity() {
             val list = channelsOf(playingGroup)
             val ch = Repo.channels.firstOrNull { it.url == last } ?: list.firstOrNull() ?: Repo.channels.firstOrNull()
             if (ch != null) play(ch, if (ch in list) list else Repo.channels)
-            loadEpg(force)
+            loadEpg(tvForce)
         }
     }
 
@@ -445,9 +451,14 @@ class PlayerActivity : Activity() {
                 if (e is OutOfMemoryError) toast("TV-Programm zu groß für den Speicher – wird ohne Beschreibungen geladen")
                 else toast("TV-Programm nicht verfügbar: ${e.message}")
             }
-            preloadAll(force)
+            val all = force || pendingRefresh
+            pendingRefresh = false
+            preloadAll(all)
         }
     }
+
+    /** „Aktualisieren“ wurde gedrückt – der Hintergrund lädt dann die gewählten Teile neu */
+    private var pendingRefresh = false
 
     private var bgJob: kotlinx.coroutines.Job? = null
 
@@ -461,19 +472,23 @@ class PlayerActivity : Activity() {
             val pls = store.playlists()
             if (pls.isEmpty()) return@launch
             val failed = ArrayList<String>()
+            val updTv = store.getString("upd_tv", "1") == "1"
+            val updM = store.getString("upd_m", "1") == "1"
+            val updS = store.getString("upd_s", "1") == "1"
             fun show(t: String) { if (pls.size > 1 || force) { chip.visibility = View.VISIBLE; chip.text = t } }
             for (p in pls) {
                 if (p.id == playlist?.id) continue
                 try {
                     show("${p.name}: Sender werden geladen …")
-                    val l = Repo.preload(this@PlayerActivity, p, store.streamFormat, force)
-                    if (force) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val l = Repo.preload(this@PlayerActivity, p, store.streamFormat, force && updTv)
+                    if (force && updTv) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         try { Known.update(filesDir, "${p.id}_tv", l.channels.map { it.url }) } catch (_: Throwable) { }
                     }
-                    try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force) } catch (_: Throwable) { System.gc() }
+                    try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force && updTv) } catch (_: Throwable) { System.gc() }
                 } catch (e: Throwable) { failed.add(p.name) }
             }
             for (p in pls) for (series in listOf(false, true)) {
+                if (force && !(if (series) updS else updM)) continue   // nicht gewählt
                 try {
                     show("${p.name}: ${if (series) "Serien" else "Filme"} werden geladen …")
                     if (Vod.prefetch(this@PlayerActivity, p, series, force, since)) kotlinx.coroutines.delay(1500) // Anbieter nicht überlasten
@@ -485,6 +500,68 @@ class PlayerActivity : Activity() {
             chip.visibility = View.GONE
             if (force) showUpdateReport(pls, failed)
         }
+    }
+
+    /** „Aktualisieren“: jetzt starten oder festlegen, was aktualisiert wird (wird gespeichert) */
+    private fun refreshDialog() {
+        val tv = store.getString("upd_tv", "1") == "1"
+        val m = store.getString("upd_m", "1") == "1"
+        val se = store.getString("upd_s", "1") == "1"
+        val what = listOfNotNull("TV".takeIf { tv }, "Filme".takeIf { m }, "Serien".takeIf { se }).joinToString(", ").ifEmpty { "nichts" }
+        val sc = store.getString("upd_scope", "mine")
+        val countries = when {
+            sc == "all" -> "alle Länder"
+            sc.startsWith("c:") -> sc.removePrefix("c:").split(",").filter { it.isNotBlank() }.joinToString(", ") { if (it == "XXX") "XXX" else it }
+            else -> "meine Länder aus dem Live-TV" + (playlist?.let { Repo.liveCountries(this, it.id) }?.filter { it != "?" }?.sorted()?.joinToString(", ", " (", ")") ?: "")
+        }
+        AlertDialog.Builder(this).setTitle("Aktualisieren")
+            .setItems(arrayOf(
+                "▶  Jetzt aktualisieren",
+                "⚙  Was aktualisieren?  –  $what",
+                "🌍  Filme/Serien aus welchen Ländern?  –  $countries"
+            )) { _, w ->
+                when (w) {
+                    0 -> {
+                        if (!tv && !m && !se) { toast("Es ist nichts ausgewählt – bitte unter „Was aktualisieren?“ wählen"); ui.postDelayed({ refreshDialog() }, 200); return@setItems }
+                        load(true, stay = current != null)
+                    }
+                    1 -> {
+                        val ck = booleanArrayOf(tv, m, se)
+                        Dialogs.multiChoice(this, "Was soll aktualisiert werden?", arrayOf("📺 TV-Sender und TV-Programm", "🎬 Filme", "📼 Serien"), ck) {
+                            store.putString("upd_tv", if (ck[0]) "1" else "0")
+                            store.putString("upd_m", if (ck[1]) "1" else "0")
+                            store.putString("upd_s", if (ck[2]) "1" else "0")
+                            toast("Gespeichert")
+                            ui.postDelayed({ refreshDialog() }, 200)
+                        }
+                    }
+                    2 -> AlertDialog.Builder(this).setTitle("Filme/Serien aus welchen Ländern laden?")
+                        .setItems(arrayOf(
+                            (if (sc == "mine") "● " else "    ") + "Nur meine Länder (wie im Live-TV gewählt)",
+                            (if (sc == "all") "● " else "    ") + "Alle Länder (große Listen, dauert länger)",
+                            (if (sc.startsWith("c:")) "● " else "    ") + "Eigene Auswahl …"
+                        )) { _, k ->
+                            when (k) {
+                                0 -> { store.putString("upd_scope", "mine"); toast("Gespeichert"); ui.postDelayed({ refreshDialog() }, 200) }
+                                1 -> { store.putString("upd_scope", "all"); toast("Gespeichert"); ui.postDelayed({ refreshDialog() }, 200) }
+                                else -> {
+                                    // Länder aus den Gruppen aller geladenen Playlists
+                                    val codes = store.playlists().flatMap { Repo.groupsOf(this, it.id) }.map { Countries.code(it) }
+                                        .filter { it != "?" }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }
+                                    val chosen = sc.removePrefix("c:").split(",").toSet()
+                                    val ck = BooleanArray(codes.size) { codes[it] in chosen }
+                                    Dialogs.multiChoice(this, "Filme/Serien aus diesen Ländern laden", codes.map { Countries.label(it) }.toTypedArray(), ck) {
+                                        val sel = codes.filterIndexed { i, _ -> ck[i] }
+                                        if (sel.isEmpty()) { toast("Bitte mindestens ein Land wählen"); return@multiChoice }
+                                        store.putString("upd_scope", "c:" + sel.joinToString(","))
+                                        toast("Gespeichert: " + sel.joinToString(", "))
+                                        ui.postDelayed({ refreshDialog() }, 200)
+                                    }
+                                }
+                            }
+                        }.show()
+                }
+            }.setNegativeButton("Schließen", null).show()
     }
 
     /** Meldung nach „Aktualisieren“: wie viele Sender, Filme und Serien je Playlist neu dazugekommen sind */
@@ -501,10 +578,10 @@ class PlayerActivity : Activity() {
         var total = 0
         pls.forEach { p ->
             sb.append("📡 ").append(p.name).append("\n")
-            sb.append("   ").append(part("${p.id}_tv", "📺 TV")).append("\n")
+            if (store.getString("upd_tv", "1") == "1") sb.append("   ").append(part("${p.id}_tv", "📺 TV")).append("\n")
             if (p.type == "xtream") {
-                sb.append("   ").append(part("${p.id}_m", "🎬 Filme")).append("\n")
-                sb.append("   ").append(part("${p.id}_s", "📼 Serien")).append("\n")
+                if (store.getString("upd_m", "1") == "1") sb.append("   ").append(part("${p.id}_m", "🎬 Filme")).append("\n")
+                if (store.getString("upd_s", "1") == "1") sb.append("   ").append(part("${p.id}_s", "📼 Serien")).append("\n")
             }
             sb.append("\n")
             listOf("_tv", "_m", "_s").forEach { total += Known.lastNew["${p.id}$it"] ?: 0 }
@@ -1801,7 +1878,7 @@ class PlayerActivity : Activity() {
             item == "Favoritenlisten" -> manageFavLists()
             item == "Gruppen / Länder" -> manageGroups()
             item == "Playlists" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java), REQ_PLAYLIST) }
-            item == "Aktualisieren" -> load(true, stay = current != null)
+            item == "Aktualisieren" -> refreshDialog()
             item.startsWith("Stream-Format") -> chooseStreamFormat(i)
             item == "👥 Verwaltung" -> { hideOverlay(); startActivityForResult(Intent(this, PlaylistActivity::class.java).putExtra("people", true), REQ_PLAYLIST) }
             item == "🔊 Ton-Synchronisierung" -> { hideOverlay(); ui.postDelayed({ audioSyncDialog() }, 150) }

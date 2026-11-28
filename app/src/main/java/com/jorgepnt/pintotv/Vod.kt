@@ -73,6 +73,9 @@ object Vod {
 
     /** Länder, die geladen werden sollen (deine Auswahl aus dem Live-TV), z. B. „DE,XXX“ – leer = alles */
     fun scopeFor(ctx: Context, p: Playlist): String {
+        val pref = Store(ctx).getString("upd_scope", "mine")
+        if (pref == "all") return ""
+        if (pref.startsWith("c:")) return pref.removePrefix("c:").split(",").filter { it.isNotBlank() }.sorted().joinToString(",")
         val a = Repo.liveCountries(ctx, p.id) ?: Repo.globalCountries(ctx) ?: return ""
         return a.filter { it != "?" }.sorted().joinToString(",")
     }
@@ -120,9 +123,12 @@ object Vod {
         true
     }
 
-    fun clearCache(ctx: Context? = null) {
-        cache.clear()
-        ctx?.filesDir?.listFiles()?.filter { it.name.startsWith("vod_") }?.forEach { it.delete() }
+    fun clearCache(ctx: Context? = null, movies: Boolean = true, series: Boolean = true) {
+        if (movies) cache.keys.filter { it.endsWith(":m") }.forEach { cache.remove(it) }
+        if (series) cache.keys.filter { it.endsWith(":s") }.forEach { cache.remove(it) }
+        ctx?.filesDir?.listFiles()?.filter { f ->
+            f.name.startsWith("vod_") && ((movies && f.name.contains("_m.json")) || (series && f.name.contains("_s.json")))
+        }?.forEach { it.delete() }
     }
 
     private const val DISK_AGE = 12 * 3600_000L
