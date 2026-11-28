@@ -1,6 +1,6 @@
 {
-  "versionCode": 99,
-  "versionName": "2.87",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/70f494dfb5005007c5912ec1c8a34955651b3693/pintotv.apk",
-  "notes": "• Gruppen/Kategorien ein- und ausblenden: neuer Knopf „⇅ A–Z“ sortiert die Liste nach Name (nochmal drücken = wie Liste)\n• Gilt für alle Auswahllisten mit Haken – die Wahl wird gemerkt"
+  "versionCode": 100,
+  "versionName": "2.88",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/537501041eef1125dbd6d60a49b3522e11bf65ec/pintotv.apk",
+  "notes": "• Nach „Aktualisieren“ kommt eine Übersicht: wie viele TV-Sender, Filme und Serien je Playlist neu dazugekommen sind\n• Beim allerersten Mal wird der Stand nur erfasst – ab dem nächsten Aktualisieren siehst du die Neuen"
 }
