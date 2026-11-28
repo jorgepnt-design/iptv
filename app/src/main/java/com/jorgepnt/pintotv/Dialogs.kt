@@ -10,45 +10,65 @@ import android.widget.Toast
 
 object Dialogs {
     /** Mehrfachauswahl – Knöpfe stehen OBEN, damit man nicht durch die ganze Liste scrollen muss */
+    /** zuletzt gewählte Ansicht in Auswahllisten: nach Name (A–Z) oder wie die Liste */
+    private var sortAz = false
+
     fun multiChoice(a: Activity, title: String, labels: Array<String>, checked: BooleanArray, onApply: () -> Unit) {
-        val d = a.resources.displayMetrics.density
-        val head = LinearLayout(a).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding((24 * d).toInt(), (18 * d).toInt(), (24 * d).toInt(), (8 * d).toInt())
+        // Sortierschlüssel: ohne Flaggen/Zeichen am Anfang, ohne Groß/Klein
+        fun key(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}]+"), "").lowercase()
+        val azOrder = labels.indices.sortedBy { key(labels[it]) }
+        val listOrder = labels.indices.toList()
+
+        fun open(az: Boolean) {
+            val order = if (az) azOrder else listOrder
+            val lab = order.map { labels[it] }.toTypedArray()
+            val ch = BooleanArray(order.size) { checked[order[it]] }
+            val d = a.resources.displayMetrics.density
+            val head = LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding((24 * d).toInt(), (18 * d).toInt(), (24 * d).toInt(), (8 * d).toInt())
+            }
+            head.addView(TextView(a).apply { text = title; textSize = 20f; setTextColor(Color.WHITE) })
+            val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
+            fun btn(t: String) = Button(a).apply {
+                text = t; isAllCaps = false; textSize = 14f; maxLines = 1
+                setTextColor(Color.WHITE)
+                setBackgroundResource(R.drawable.button_bg)
+                setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
+                layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (10 * d).toInt() }
+            }
+            val bApply = btn("✓ Übernehmen"); val bSort = btn(if (az) "⇅ Wie Liste" else "⇅ A–Z")
+            val bAll = btn("Alle an"); val bNone = btn("Alle aus"); val bCancel = btn("Abbrechen")
+            listOf(bApply, bSort, bAll, bNone, bCancel).forEach { row.addView(it) }
+            head.addView(row)
+            val dlg = AlertDialog.Builder(a)
+                .setCustomTitle(head)
+                .setMultiChoiceItems(lab, ch) { _, i, on -> ch[i] = on; checked[order[i]] = on }
+                // dieselben Knöpfe zusätzlich unten
+                .setPositiveButton("✓ Übernehmen") { _, _ -> onApply() }
+                .setNeutralButton("Alle an/aus", null)
+                .setNegativeButton("Abbrechen", null)
+                .create()
+            fun setAll(on: Boolean) {
+                for (i in ch.indices) { ch[i] = on; checked[order[i]] = on; dlg.listView.setItemChecked(i, on) }
+                Toast.makeText(a, if (on) "Alle ausgewählt" else "Alle abgewählt", Toast.LENGTH_SHORT).show()
+            }
+            bAll.setOnClickListener { setAll(true) }
+            bNone.setOnClickListener { setAll(false) }
+            bCancel.setOnClickListener { dlg.dismiss() }
+            bApply.setOnClickListener { dlg.dismiss(); onApply() }
+            bSort.setOnClickListener {
+                sortAz = !az
+                dlg.dismiss()
+                open(sortAz)
+            }
+            dlg.setOnShowListener {
+                dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { setAll(!checked.all { it }) }
+                bApply.requestFocus()
+            }
+            dlg.show()
         }
-        head.addView(TextView(a).apply { text = title; textSize = 20f; setTextColor(Color.WHITE) })
-        val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
-        fun btn(t: String) = Button(a).apply {
-            text = t; isAllCaps = false; textSize = 14f; maxLines = 1
-            setTextColor(Color.WHITE)
-            setBackgroundResource(R.drawable.button_bg)
-            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
-            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (10 * d).toInt() }
-        }
-        val bApply = btn("✓ Übernehmen"); val bAll = btn("Alle an"); val bNone = btn("Alle aus"); val bCancel = btn("Abbrechen")
-        listOf(bApply, bAll, bNone, bCancel).forEach { row.addView(it) }
-        head.addView(row)
-        val dlg = AlertDialog.Builder(a)
-            .setCustomTitle(head)
-            .setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
-            // dieselben Knöpfe zusätzlich unten
-            .setPositiveButton("✓ Übernehmen") { _, _ -> onApply() }
-            .setNeutralButton("Alle an/aus", null)
-            .setNegativeButton("Abbrechen", null)
-            .create()
-        fun setAll(on: Boolean) {
-            for (i in checked.indices) { checked[i] = on; dlg.listView.setItemChecked(i, on) }
-            Toast.makeText(a, if (on) "Alle ausgewählt" else "Alle abgewählt", Toast.LENGTH_SHORT).show()
-        }
-        bAll.setOnClickListener { setAll(true) }
-        bNone.setOnClickListener { setAll(false) }
-        bCancel.setOnClickListener { dlg.dismiss() }
-        bApply.setOnClickListener { dlg.dismiss(); onApply() }
-        dlg.setOnShowListener {
-            dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { setAll(!checked.all { it }) }
-            bApply.requestFocus()
-        }
-        dlg.show()
+        open(sortAz)
     }
 
     /** Gruppen/Kategorien verwalten: nach Ländern, einzeln, alle einblenden. counts = Anzahl Einträge je Gruppe */
