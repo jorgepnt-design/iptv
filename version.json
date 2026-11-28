@@ -1,6 +1,6 @@
 {
-  "versionCode": 102,
-  "versionName": "2.90",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/2d092c2d8d99104dbc67f8f87eab1bb5f1cac110/pintotv.apk",
-  "notes": "• „Aktualisieren“ hat jetzt ein Auswahlfenster: Jetzt aktualisieren · Was aktualisieren? (TV / Filme / Serien) · Filme/Serien aus welchen Ländern (meine Länder / alle / eigene Auswahl, z. B. nur Deutschland + XXX)\n• Deine Auswahl wird gespeichert"
+  "versionCode": 103,
+  "versionName": "2.91",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/c46220cbbecb753625bac6f603c44a93b6b73fab/pintotv.apk",
+  "notes": "• Update-Suche findet jetzt sofort die allerneueste Version – keine veralteten Zwischen-Updates mehr\n• Vor dem Laden wird nochmal geprüft, ob es inzwischen eine noch neuere gibt\n• Aus 2.90: „Aktualisieren“ mit Auswahl (TV/Filme/Serien, welche Länder) – wird gespeichert"
 }
