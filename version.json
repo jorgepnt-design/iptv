@@ -1,6 +1,6 @@
 {
-  "versionCode": 97,
-  "versionName": "2.85",
-  "url": "https://github.com/jorgepnt-design/iptv/raw/5d2e7c3e6fa032b3ad6ab6929415dd9c21eeab75/pintotv.apk",
-  "notes": "• Filme/Serien: Untertitel sind jetzt standardmäßig aus\n• OK lang drücken: Untertitel ein/aus und Tonspur wählen – die Wahl wird gemerkt"
+  "versionCode": 98,
+  "versionName": "2.86",
+  "url": "https://github.com/jorgepnt-design/iptv/raw/2a61133d5aece3b1eaca9298d4410d7cb0f8c628/pintotv.apk",
+  "notes": "• Keine falsche Absturzmeldung mehr, wenn nur Android selbst kurz hängt (z. B. beim Ausschalten des Bildschirms)"
 }
