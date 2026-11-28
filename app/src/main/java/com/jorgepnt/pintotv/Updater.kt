@@ -26,24 +26,40 @@ object Updater {
         if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else @Suppress("DEPRECATION") pi.versionCode.toLong()
     } catch (e: Exception) { 0 }
 
+    private fun readInfo(url: String, raw: Boolean): Info? = try {
+        val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        c.connectTimeout = 6000; c.readTimeout = 6000
+        c.useCaches = false
+        c.setRequestProperty("Cache-Control", "no-cache")
+        if (raw) c.setRequestProperty("Accept", "application/vnd.github.raw")
+        val o = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+        Info(o.getInt("versionCode"), o.getString("versionName"), o.getString("url"), o.optString("notes"))
+    } catch (e: Exception) { null }
+
+    /** neueste Version: GitHub-Schnittstelle (sofort aktuell) und die normale Datei (kann ein paar Minuten alt sein) – die höhere gewinnt */
+    private fun latest(): Info? {
+        val api = readInfo("https://api.github.com/repos/jorgepnt-design/iptv/contents/version.json?ref=main&t=${System.currentTimeMillis()}", true)
+        val rawFile = readInfo("$VERSION_URL?t=${System.currentTimeMillis()}", false)
+        return listOfNotNull(api, rawFile).maxByOrNull { it.code }
+    }
+
     /** quiet = beim Start: nur melden, wenn es etwas Neues gibt */
     fun check(a: Activity, scope: CoroutineScope, quiet: Boolean) {
         scope.launch {
-            val info = withContext(Dispatchers.IO) {
-                try {
-                    val c = java.net.URL("$VERSION_URL?t=${System.currentTimeMillis()}").openConnection() as java.net.HttpURLConnection
-                    c.connectTimeout = 6000; c.readTimeout = 6000
-                    val o = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-                    Info(o.getInt("versionCode"), o.getString("versionName"), o.getString("url"), o.optString("notes"))
-                } catch (e: Exception) { null }
-            }
+            val info = withContext(Dispatchers.IO) { latest() }
             if (a.isFinishing) return@launch
             if (info == null) { if (!quiet) toast(a, "Update-Server nicht erreichbar"); return@launch }
             if (info.code <= currentCode(a)) { if (!quiet) toast(a, "PintoTV ist aktuell (${appVersion(a)})"); return@launch }
             AlertDialog.Builder(a)
                 .setTitle("Update verfügbar: PintoTV v${info.name}")
                 .setMessage("Installiert: ${appVersion(a)}\n\n${info.notes}".trim())
-                .setPositiveButton("Jetzt installieren") { _, _ -> download(a, scope, info) }
+                .setPositiveButton("Jetzt installieren") { _, _ ->
+                    // direkt vor dem Laden nochmal nachsehen – es könnte schon eine noch neuere Version geben
+                    scope.launch {
+                        val newest = withContext(Dispatchers.IO) { latest() }?.takeIf { it.code > info.code } ?: info
+                        if (!a.isFinishing) download(a, scope, newest)
+                    }
+                }
                 .setNegativeButton("Später", null)
                 .show()
         }
