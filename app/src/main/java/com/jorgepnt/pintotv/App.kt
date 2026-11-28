@@ -38,6 +38,8 @@ class App : Application() {
                             val lines = st.map { it.toString() }
                             val mine = lines.filter { it.contains("pintotv") }.take(8)
                             val top = lines.take(10)
+                            // Hänger nur im Android-System (z. B. Bildschirm geht aus, Grafik stoppt) sind kein App-Fehler – nicht melden
+                            if (mine.isEmpty()) throw IllegalStateException("system")
                             val txt = "${appVersion(this)} · Bedienung hing > 2 s\n" +
                                 (if (mine.isNotEmpty()) mine.joinToString("\n") + "\n—\n" else "") + top.joinToString("\n")
                             java.io.File(filesDir, "hang.txt").writeText(txt)
