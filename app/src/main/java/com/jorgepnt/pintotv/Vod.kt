@@ -184,6 +184,8 @@ object Vod {
     }
 
     private fun writeDisk(f: File, c: VodCatalog) {
+        // merken, was neu dazugekommen ist (für die Meldung nach dem Aktualisieren)
+        try { Known.update(f.parentFile!!, f.name.removePrefix("vod_").removeSuffix(".json"), c.items.map { it.id }) } catch (_: Throwable) { }
         val tmp = File(f.path + ".tmp")
         android.util.JsonWriter(java.io.BufferedWriter(java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8), 65536)).use { w ->
             w.beginObject()
@@ -322,4 +324,28 @@ object Vod {
             out.sortedWith(compareBy({ it.season }, { it.number }))
         }
     }
+}
+
+
+/** Merkt sich, welche Sender/Filme/Serien schon bekannt waren, und zählt beim Aktualisieren die neuen.
+ *  Schlüssel: „<Playlist-Id>_tv“, „<Playlist-Id>_m“ (Filme), „<Playlist-Id>_s“ (Serien) */
+object Known {
+    /** neue Einträge der letzten Aktualisierung (fehlt = beim ersten Mal nur erfasst) */
+    val lastNew = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    val firstTime = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    @Synchronized
+    fun update(dir: File, key: String, ids: Collection<String>): Int? {
+        val f = File(dir, "known_$key.ids")
+        val old: Set<String>? = if (f.exists()) f.bufferedReader().useLines { it.toHashSet() } else null
+        val tmp = File(f.path + ".tmp")
+        tmp.bufferedWriter().use { w -> ids.forEach { w.write(it); w.write("\n") } }
+        tmp.renameTo(f)
+        if (old == null) { firstTime.add(key); lastNew.remove(key); return null }
+        val n = ids.count { it !in old }
+        lastNew[key] = n; firstTime.remove(key)
+        return n
+    }
+
+    fun reset() { lastNew.clear(); firstTime.clear() }
 }

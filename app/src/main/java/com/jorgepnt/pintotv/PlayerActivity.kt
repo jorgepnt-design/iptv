@@ -351,7 +351,7 @@ class PlayerActivity : Activity() {
     private fun load(force: Boolean, stay: Boolean = false) {
         val p = store.active() ?: return
         val samePl = playlist?.id == p.id
-        if (force) Vod.clearCache(this)
+        if (force) { Known.reset(); Vod.clearCache(this) }
         playlist = p
         loading = true
         hideStatus()
@@ -371,6 +371,10 @@ class PlayerActivity : Activity() {
             hideLoading()
             hideStatus()
             store.migrateFavorites(p.id, Repo.channels)
+            if (force) {
+                val urls = Repo.channels.map { it.url }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { Known.update(filesDir, "${p.id}_tv", urls) } catch (_: Throwable) { } }
+            }
             // neue Playlist ohne eigene Länderauswahl: dieselben Länder wie bei den anderen Playlists
             if (!store.hasHidden(p.id)) {
                 val groups = Repo.groups
@@ -463,6 +467,9 @@ class PlayerActivity : Activity() {
                 try {
                     show("${p.name}: Sender werden geladen …")
                     val l = Repo.preload(this@PlayerActivity, p, store.streamFormat, force)
+                    if (force) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try { Known.update(filesDir, "${p.id}_tv", l.channels.map { it.url }) } catch (_: Throwable) { }
+                    }
                     try { show("${p.name}: TV-Programm …"); Repo.prefetchEpg(this@PlayerActivity, l, force) } catch (_: Throwable) { System.gc() }
                 } catch (e: Throwable) { failed.add(p.name) }
             }
@@ -476,8 +483,39 @@ class PlayerActivity : Activity() {
                 }
             }
             chip.visibility = View.GONE
-            if (force) toast(if (failed.isEmpty()) "Alle Playlists aktualisiert (TV, Filme, Serien)" else "Aktualisiert – Probleme bei: ${failed.joinToString()}")
+            if (force) showUpdateReport(pls, failed)
         }
+    }
+
+    /** Meldung nach „Aktualisieren“: wie viele Sender, Filme und Serien je Playlist neu dazugekommen sind */
+    private fun showUpdateReport(pls: List<Playlist>, failed: List<String>) {
+        fun part(key: String, what: String): String = when {
+            Known.lastNew.containsKey(key) -> {
+                val n = Known.lastNew[key] ?: 0
+                if (n == 0) "$what: nichts Neues" else "$what: +$n neu"
+            }
+            key in Known.firstTime -> "$what: erstmals erfasst"
+            else -> "$what: –"
+        }
+        val sb = StringBuilder()
+        var total = 0
+        pls.forEach { p ->
+            sb.append("📡 ").append(p.name).append("\n")
+            sb.append("   ").append(part("${p.id}_tv", "📺 TV")).append("\n")
+            if (p.type == "xtream") {
+                sb.append("   ").append(part("${p.id}_m", "🎬 Filme")).append("\n")
+                sb.append("   ").append(part("${p.id}_s", "📼 Serien")).append("\n")
+            }
+            sb.append("\n")
+            listOf("_tv", "_m", "_s").forEach { total += Known.lastNew["${p.id}$it"] ?: 0 }
+        }
+        if (failed.isNotEmpty()) sb.append("⚠ Probleme bei: ").append(failed.joinToString()).append("\n")
+        if (isFinishing) return
+        AlertDialog.Builder(this)
+            .setTitle(if (total > 0) "Aktualisiert – $total neue Einträge" else "Aktualisiert")
+            .setMessage(sb.toString().trimEnd())
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun isSpecial(g: String) = g.startsWith(PL) || g == G_SWITCH || g == G_MOVIES || g == G_SERIES
