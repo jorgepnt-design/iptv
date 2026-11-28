@@ -682,7 +682,13 @@ class PlayerActivity : Activity() {
                 val keys = store.favLists().firstOrNull { it.name == favGroups[g] }?.keys ?: emptySet<String>()
                 val byKey = favIndex()
                 val fl = store.favLists().firstOrNull { it.name == favGroups[g] }
-                val l = keys.mapNotNull { byKey[it]?.firstOrNull() }
+                // gibt es den Namen mehrfach (z. B. „DAZN 1 FHD“ in mehreren Gruppen): genau den gewählten Sender nehmen,
+                // sonst einen aus einer sichtbaren Gruppe
+                val urls = store.favUrls()
+                val l = keys.mapNotNull { k ->
+                    val all = byKey[k] ?: return@mapNotNull null
+                    all.firstOrNull { it.url in urls } ?: all.firstOrNull { it.group !in hidden } ?: all.first()
+                }
                 if (fl?.manual == true) l else l.sortedBy { it.number }
             }
             G_RECENT -> { val m = Repo.channels.associateBy { it.url }; store.recents(playlist!!.id).mapNotNull { m[it] } }
@@ -1268,12 +1274,13 @@ class PlayerActivity : Activity() {
             .setPositiveButton("Übernehmen") { _, _ ->
                 lists.forEachIndexed { i, l -> if (checked[i]) l.keys.add(k) else l.keys.remove(k) }
                 store.saveFavLists(lists)
+                store.setFavUrl(c.url, checked.any { it })
                 val n = checked.count { it }
                 toast(if (n == 0) "${c.name} aus allen Favoriten entfernt" else "★ ${c.name} in $n Liste${if (n == 1) "" else "n"}")
                 afterFavChange(c)
             }
             .setNeutralButton("+ Neue Liste") { _, _ -> newFavList { name ->
-                val l = store.favLists(); l.firstOrNull { it.name == name }?.keys?.add(k); store.saveFavLists(l)
+                val l = store.favLists(); l.firstOrNull { it.name == name }?.keys?.add(k); store.saveFavLists(l); store.setFavUrl(c.url, true)
                 toast("★ ${c.name} in „$name“"); afterFavChange(c)
             } }
             .setNegativeButton("Abbrechen", null)
@@ -1304,7 +1311,7 @@ class PlayerActivity : Activity() {
             var added = 0; var removed = 0
             chans.forEachIndexed { i, ch ->
                 val k = favKey(ch)
-                if (checked[i]) { if (l.keys.add(k)) added++ } else { if (l.keys.remove(k)) removed++ }
+                if (checked[i]) { if (l.keys.add(k)) added++; store.setFavUrl(ch.url, true) } else { if (l.keys.remove(k)) removed++ }
             }
             store.saveFavLists(lists)
             toast("★ $listName: $added hinzugefügt" + if (removed > 0) ", $removed entfernt" else "")

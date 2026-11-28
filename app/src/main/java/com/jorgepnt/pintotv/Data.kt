@@ -341,6 +341,13 @@ class Store(ctx: Context) {
         return true
     }
 
+    /** genau die Sender (Adresse), die als Favorit gewählt wurden – wichtig, wenn ein Name mehrfach vorkommt */
+    fun favUrls(): Set<String> = sp.getStringSet("fav_urls", emptySet()) ?: emptySet()
+    fun setFavUrl(url: String, on: Boolean) {
+        val s = HashSet(favUrls()); if (on) s.add(url) else s.remove(url)
+        sp.edit().putStringSet("fav_urls", s).apply()
+    }
+
     /** wurde für diese Playlist/diesen Bereich schon einmal eine Auswahl gespeichert? */
     fun hasHidden(pid: String) = sp.getStringSet("hidden_$pid", null)?.isNotEmpty() == true || sp.contains("allowc_$pid")
 
